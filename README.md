@@ -7,8 +7,8 @@ Ingest your personal files (Google Drive, Markdown) into ChromaDB, so you can qu
 ```
 [Obsidian .md files]  ──┐
 [rclone'd GDrive]     ──┼──> docker run ingest ──> ChromaDB (persistent, local)
-[GitHub repos]        ──┘                                │
-                                                         │
+[GitHub repos]        ──┘                                       │
+                                                                │
                                    Claude Code ──> chroma-mcp ──┘
 ```
 
