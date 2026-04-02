@@ -8,6 +8,20 @@ Ingest your personal files (Google Drive, Markdown, GitHub repos) into ChromaDB,
 - An `OPENROUTER_API_KEY` (for embeddings). Set `USE_LOCAL_EMBEDDINGS=1` instead if you want fully offline embeddings.
 - A local directory with your files (Obsidian vault, rclone'd Google Drive, GitHub repos, etc.)
 
+## Setup
+
+Create the local data directories used by Docker Compose:
+
+```bash
+mkdir -p chromadb-data rclone-config gdrive-data
+```
+
+| Directory | Purpose |
+|---|---|
+| `chromadb-data/` | ChromaDB persistent storage |
+| `rclone-config/` | Rclone configuration (`rclone.conf`) |
+| `gdrive-data/` | Google Drive files synced by rclone |
+
 ## Usage
 
 Save the `docker-compose.yml` from this repo, then:
