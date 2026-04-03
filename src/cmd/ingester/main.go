@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 	tea "github.com/charmbracelet/bubbletea"
@@ -36,6 +37,23 @@ func main() {
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
+}
+
+func ensureChromaDB(dc *docker.DockerClient) error {
+	running, _ := dc.ChromaDBStatus()
+	if running {
+		return nil
+	}
+
+	fmt.Println("ChromaDB is not running, running 'chromadb start' first...")
+	if err := dc.StartChromaDB(); err != nil {
+		return fmt.Errorf("failed to start ChromaDB: %w", err)
+	}
+	if err := dc.WaitForChromaDB(30 * time.Second); err != nil {
+		return fmt.Errorf("ChromaDB did not become ready: %w", err)
+	}
+	fmt.Println("ChromaDB is running.")
+	return nil
 }
 
 func initServices() (*domain.Config, *docker.DockerClient, *ingester.Ingester, []string, error) {
@@ -95,8 +113,8 @@ func newIngestCmd() *cobra.Command {
 				opts.Extensions = cfg.Extensions
 			}
 
-			if err := dc.EnsureChromaDB(30_000_000_000); err != nil {
-				return fmt.Errorf("ensuring ChromaDB is running: %w", err)
+			if err := ensureChromaDB(dc); err != nil {
+				return err
 			}
 
 			return ing.Run(args, opts, func(line string) {
@@ -125,8 +143,8 @@ func newUpdateCmd() *cobra.Command {
 			}
 			_ = cfg
 
-			if err := dc.EnsureChromaDB(30_000_000_000); err != nil {
-				return fmt.Errorf("ensuring ChromaDB is running: %w", err)
+			if err := ensureChromaDB(dc); err != nil {
+				return err
 			}
 
 			result, err := ing.RunUpdateOnly(args, func(line string) {
@@ -205,6 +223,10 @@ func newStatsCmd() *cobra.Command {
 				cfg.CollectionName = collection
 			}
 
+			if err := ensureChromaDB(dc); err != nil {
+				return err
+			}
+
 			stats, err := ing.GetStats(func(line string) {
 				fmt.Println(line)
 			})
@@ -212,10 +234,8 @@ func newStatsCmd() *cobra.Command {
 				return err
 			}
 
-			running, _ := dc.ChromaDBStatus()
-
 			fmt.Printf("\nCollection: %s\n", cfg.CollectionName)
-			fmt.Printf("ChromaDB:   %s\n", map[bool]string{true: "running", false: "stopped"}[running])
+			fmt.Printf("ChromaDB:   running\n")
 			fmt.Printf("Embeddings: %s\n", stats.EmbeddingType)
 			return nil
 		},
@@ -242,8 +262,8 @@ func newResetCmd() *cobra.Command {
 				cfg.CollectionName = collection
 			}
 
-			if err := dc.EnsureChromaDB(30_000_000_000); err != nil {
-				return fmt.Errorf("ensuring ChromaDB is running: %w", err)
+			if err := ensureChromaDB(dc); err != nil {
+				return err
 			}
 
 			return ing.Run(nil, ingester.IngestOptions{
@@ -278,7 +298,7 @@ func newChromaDBCmd() *cobra.Command {
 				if err := dc.StartChromaDB(); err != nil {
 					return err
 				}
-				if err := dc.WaitForChromaDB(30_000_000_000); err != nil {
+				if err := dc.WaitForChromaDB(30 * time.Second); err != nil {
 					return err
 				}
 				fmt.Println("ChromaDB is running.")
