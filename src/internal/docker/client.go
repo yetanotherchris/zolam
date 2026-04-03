@@ -17,7 +17,30 @@ type DockerClient struct {
 	composePath string
 }
 
+// CheckDockerAvailable verifies that Docker is installed and the daemon is running.
+func CheckDockerAvailable() error {
+	// Check if docker CLI is on PATH
+	_, err := exec.LookPath("docker")
+	if err != nil {
+		return fmt.Errorf("Docker is required but not found. Please install Docker Desktop or Docker Engine.")
+	}
+
+	// Check if Docker daemon is running
+	cmd := exec.Command("docker", "info")
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("Docker daemon is not running. Please start Docker and try again.")
+	}
+
+	return nil
+}
+
 func NewDockerClient() (*DockerClient, error) {
+	if err := CheckDockerAvailable(); err != nil {
+		return nil, err
+	}
+
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get home directory: %w", err)

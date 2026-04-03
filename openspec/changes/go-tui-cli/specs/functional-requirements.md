@@ -110,6 +110,14 @@ ingester config
 - Show embedding function type (OpenRouter vs local)
 - Show ChromaDB status (running/stopped)
 
+## FR-10: Docker Availability Detection
+
+- On startup, check that the `docker` CLI is available on the system PATH
+- Check that the Docker daemon is running and responsive (via `docker info`)
+- If Docker is not installed: display a clear error message ("Docker is required but not found. Please install Docker Desktop or Docker Engine.") and exit with non-zero code
+- If Docker is installed but the daemon is not running: display a clear error message ("Docker daemon is not running. Please start Docker and try again.") and exit with non-zero code
+- These checks run before any Docker operations in both TUI and CLI modes
+
 ## FR-9: Docker Compose File Management
 
 - The application embeds the `docker-compose.yml` content or generates it dynamically
