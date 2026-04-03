@@ -40,7 +40,6 @@ import chromadb
 # ---------------------------------------------------------------------------
 
 CHROMA_DATA_DIR = "/data"
-COLLECTION_NAME = "obsidian"
 
 SOURCES = {
     "obsidian": {
@@ -220,28 +219,17 @@ def main():
 
     client = chromadb.PersistentClient(path=CHROMA_DATA_DIR)
 
-    if args.stats:
-        try:
-            collection = client.get_collection(COLLECTION_NAME)
-            print(f"Collection '{COLLECTION_NAME}' has {collection.count()} documents.")
-        except Exception:
-            print(f"No '{COLLECTION_NAME}' collection found.")
-        return
-
-    if args.reset:
-        try:
-            client.delete_collection(COLLECTION_NAME)
-            print("Deleted existing collection.")
-        except Exception:
-            pass
-
     ef = get_embedding_function()
-    kwargs = {"name": COLLECTION_NAME}
-    if ef:
-        kwargs["embedding_function"] = ef
-    collection = client.get_or_create_collection(**kwargs)
 
-    total = 0
+    if args.stats:
+        sources = {args.source: SOURCES[args.source]} if args.source else SOURCES
+        for name in sources:
+            try:
+                collection = client.get_collection(name)
+                print(f"Collection '{name}' has {collection.count()} documents.")
+            except Exception:
+                print(f"No '{name}' collection found.")
+        return
 
     if args.directory:
         all_supported = list({ext for s in SOURCES.values() for ext in s["extensions"]})
@@ -249,24 +237,45 @@ def main():
         # Normalize extensions to include leading dot
         extensions = [ext if ext.startswith(".") else f".{ext}" for ext in extensions]
 
+        total = 0
         for dir_path in args.directory:
             resolved = Path(dir_path).resolve()
-            source_name = resolved.name
+            collection_name = resolved.name
+            if args.reset:
+                try:
+                    client.delete_collection(collection_name)
+                    print(f"Deleted existing collection '{collection_name}'.")
+                except Exception:
+                    pass
+            kwargs = {"name": collection_name}
+            if ef:
+                kwargs["embedding_function"] = ef
+            collection = client.get_or_create_collection(**kwargs)
             config = {"path": str(resolved), "extensions": extensions}
-            print(f"\nIngesting [{source_name}] from {resolved}")
-            count = ingest_source(collection, source_name, config)
+            print(f"\nIngesting [{collection_name}] from {resolved}")
+            count = ingest_source(collection, collection_name, config)
             print(f"  Ingested {count} chunks")
             total += count
+        print(f"\nDone. Total chunks ingested: {total}")
     else:
         sources = {args.source: SOURCES[args.source]} if args.source else SOURCES
+        total = 0
         for name, config in sources.items():
+            if args.reset:
+                try:
+                    client.delete_collection(name)
+                    print(f"Deleted existing collection '{name}'.")
+                except Exception:
+                    pass
+            kwargs = {"name": name}
+            if ef:
+                kwargs["embedding_function"] = ef
+            collection = client.get_or_create_collection(**kwargs)
             print(f"\nIngesting [{name}] from {config['path']}")
             count = ingest_source(collection, name, config)
             print(f"  Ingested {count} chunks")
             total += count
-
-    print(f"\nDone. Total chunks ingested: {total}")
-    print(f"Collection now has {collection.count()} documents.")
+        print(f"\nDone. Total chunks ingested: {total}")
 
 
 if __name__ == "__main__":
