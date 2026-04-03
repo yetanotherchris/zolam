@@ -34,7 +34,7 @@ services:
       - ./chromadb-data:/data
     environment:
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
-      - OPENROUTER_MODEL=${OPENROUTER_MODEL:-}
+      - OPENROUTER_MODEL=${OPENROUTER_MODEL:-openai/text-embedding-3-small}
       - USE_LOCAL_EMBEDDINGS=${USE_LOCAL_EMBEDDINGS:-}
     depends_on:
       - chromadb
