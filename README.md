@@ -10,6 +10,12 @@ Ingest your personal files into ChromaDB for semantic search in Claude.
 brew install yetanotherchris/tap/zolam
 ```
 
+### Winget (Windows)
+
+```powershell
+winget install yetanotherchris.zolam
+```
+
 ### Scoop (Windows)
 
 ```powershell
