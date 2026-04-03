@@ -43,9 +43,7 @@ func NewIngestModel() IngestModel {
 	ti.Width = 60
 
 	selected := make([]bool, len(allExtensions))
-	for i := range selected {
-		selected[i] = true
-	}
+	selected[0] = true // .md selected by default
 
 	return IngestModel{
 		directoryInput: ti,
