@@ -221,7 +221,7 @@ def main():
 
     if args.stats:
         try:
-            collection = client.get_collection("vault")
+            collection = client.get_collection("obsidian")
             print(f"Collection 'vault' has {collection.count()} documents.")
         except Exception:
             print("No 'vault' collection found.")
@@ -229,13 +229,13 @@ def main():
 
     if args.reset:
         try:
-            client.delete_collection("vault")
+            client.delete_collection("obsidian")
             print("Deleted existing collection.")
         except Exception:
             pass
 
     ef = get_embedding_function()
-    kwargs = {"name": "vault"}
+    kwargs = {"name": "obsidian"}
     if ef:
         kwargs["embedding_function"] = ef
     collection = client.get_or_create_collection(**kwargs)
