@@ -1,5 +1,5 @@
 """
-ChromaDB Vault Ingestion Script (Docker CLI)
+ChromaDB Ingestion Script (Docker CLI)
 
 Ingests markdown, PDF, and DOCX files into ChromaDB for semantic search
 via the chroma-mcp server.
@@ -7,22 +7,21 @@ via the chroma-mcp server.
 Default: uses OpenRouter for embeddings (requires OPENROUTER_API_KEY).
 Optional: set USE_LOCAL_EMBEDDINGS=1 for offline sentence-transformers.
 
-Usage (Docker):
-    docker run -v /chromadb/data:/data -v /obsidian:/sources/obsidian ingest --source obsidian
-    docker run -v /chromadb/data:/data -v /gdrive:/sources/gdrive ingest --source gdrive
-    docker run -v /chromadb/data:/data -v /mydir:/sources/mydir ingest --directory /sources/mydir
-    docker run -v /chromadb/data:/data -v ... ingest --directory /sources/dir1 /sources/dir2
-    docker run -v /chromadb/data:/data -v ... ingest --directory /sources/mydir --extensions .md .txt
-    docker run -v /chromadb/data:/data -v ... ingest --reset
-    docker run -v /chromadb/data:/data ingest --stats
+Usage (Docker Compose):
+    docker compose --profile ingest run --rm \
+      -v /path/to/notes:/sources/notes \
+      ingest --directory /sources/notes
 
-Mount points:
-    /data              -> ChromaDB persistent storage
-    /sources/obsidian  -> Obsidian vault
-    /sources/gdrive    -> rclone'd Google Drive
-    /sources/repos     -> GitHub repos
+    docker compose --profile ingest run --rm \
+      -v /path/to/notes:/sources/notes \
+      -v /path/to/docs:/sources/docs \
+      ingest --directory /sources/notes /sources/docs
+
+    docker compose --profile ingest run --rm ingest --stats
+    docker compose --profile ingest run --rm ingest --reset --directory /sources/notes
 
 Environment variables:
+    COLLECTION_NAME      -> ChromaDB collection name (default: my notes)
     OPENROUTER_API_KEY   -> API key for OpenRouter embeddings (required unless local)
     OPENROUTER_MODEL     -> (optional) embedding model, default: openai/text-embedding-3-small
     USE_LOCAL_EMBEDDINGS -> set to 1 to use local sentence-transformers instead
@@ -42,20 +41,7 @@ from tqdm import tqdm
 
 CHROMA_DATA_DIR = "/data"
 
-SOURCES = {
-    "obsidian": {
-        "path": "/sources/obsidian",
-        "extensions": [".md"],
-    },
-    "gdrive": {
-        "path": "/sources/gdrive",
-        "extensions": [".md", ".pdf", ".docx", ".txt"],
-    },
-    "repos": {
-        "path": "/sources/repos",
-        "extensions": [".md", ".py", ".cs", ".js", ".ts", ".json", ".yml", ".yaml"],
-    },
-}
+SUPPORTED_EXTENSIONS = [".md", ".pdf", ".docx", ".txt", ".py", ".cs", ".js", ".ts", ".json", ".yml", ".yaml"]
 
 CHUNK_SIZE = 2000
 CHUNK_OVERLAP = 200
@@ -210,75 +196,56 @@ def ingest_source(collection, source_name: str, source_config: dict) -> int:
 
 def main():
     parser = argparse.ArgumentParser(description="Ingest files into ChromaDB")
-    parser.add_argument("--source", choices=list(SOURCES.keys()), help="Ingest only this source")
     parser.add_argument("--directory", nargs="+", metavar="DIR",
-                        help="Ingest files from one or more directories (recursively)")
+                        help="One or more directories to ingest (recursively)")
     parser.add_argument("--extensions", nargs="+", metavar="EXT",
-                        help="File extensions to include with --directory (e.g. .md .txt .pdf). "
+                        help="File extensions to include (e.g. .md .txt .pdf). "
                              "Default: all supported extensions")
     parser.add_argument("--reset", action="store_true", help="Delete collection and re-ingest")
     parser.add_argument("--stats", action="store_true", help="Show collection stats and exit")
     args = parser.parse_args()
 
+    collection_name = os.environ.get("COLLECTION_NAME", "my notes")
     client = chromadb.PersistentClient(path=CHROMA_DATA_DIR)
-
     ef = get_embedding_function()
 
     if args.stats:
-        sources = {args.source: SOURCES[args.source]} if args.source else SOURCES
-        for name in sources:
-            try:
-                collection = client.get_collection(name)
-                print(f"Collection '{name}' has {collection.count()} documents.")
-            except Exception:
-                print(f"No '{name}' collection found.")
+        try:
+            collection = client.get_collection(collection_name)
+            print(f"Collection '{collection_name}' has {collection.count()} documents.")
+        except Exception:
+            print(f"No '{collection_name}' collection found.")
         return
 
-    if args.directory:
-        all_supported = list({ext for s in SOURCES.values() for ext in s["extensions"]})
-        extensions = args.extensions if args.extensions else all_supported
-        # Normalize extensions to include leading dot
-        extensions = [ext if ext.startswith(".") else f".{ext}" for ext in extensions]
+    if not args.directory:
+        parser.error("--directory is required (unless using --stats)")
 
-        total = 0
-        for dir_path in args.directory:
-            resolved = Path(dir_path).resolve()
-            collection_name = resolved.name
-            if args.reset:
-                try:
-                    client.delete_collection(collection_name)
-                    print(f"Deleted existing collection '{collection_name}'.")
-                except Exception:
-                    pass
-            kwargs = {"name": collection_name}
-            if ef:
-                kwargs["embedding_function"] = ef
-            collection = client.get_or_create_collection(**kwargs)
-            config = {"path": str(resolved), "extensions": extensions}
-            print(f"\nIngesting [{collection_name}] from {resolved}")
-            count = ingest_source(collection, collection_name, config)
-            print(f"  Ingested {count} chunks")
-            total += count
-        print(f"\nDone. Total chunks ingested: {total}")
-    else:
-        sources = {args.source: SOURCES[args.source]} if args.source else SOURCES
-        total = 0
-        for name, config in sources.items():
-            if args.reset:
-                try:
-                    client.delete_collection(name)
-                    print(f"Deleted existing collection '{name}'.")
-                except Exception:
-                    pass
-            kwargs = {"name": name}
-            if ef:
-                kwargs["embedding_function"] = ef
-            collection = client.get_or_create_collection(**kwargs)
-            print(f"\nIngesting [{name}] from {config['path']}")
-            count = ingest_source(collection, name, config)
-            print(f"  Ingested {count} chunks")
-            total += count
-        print(f"\nDone. Total chunks ingested: {total}")
+    extensions = args.extensions if args.extensions else SUPPORTED_EXTENSIONS
+    extensions = [ext if ext.startswith(".") else f".{ext}" for ext in extensions]
+
+    if args.reset:
+        try:
+            client.delete_collection(collection_name)
+            print(f"Deleted existing collection '{collection_name}'.")
+        except Exception:
+            pass
+
+    kwargs = {"name": collection_name}
+    if ef:
+        kwargs["embedding_function"] = ef
+    collection = client.get_or_create_collection(**kwargs)
+
+    total = 0
+    for dir_path in args.directory:
+        resolved = Path(dir_path).resolve()
+        source_label = resolved.name
+        config = {"path": str(resolved), "extensions": extensions}
+        print(f"\nIngesting [{source_label}] into collection '{collection_name}' from {resolved}")
+        count = ingest_source(collection, source_label, config)
+        print(f"  Ingested {count} chunks")
+        total += count
+
+    print(f"\nDone. Total chunks ingested: {total}")
 
 
 if __name__ == "__main__":

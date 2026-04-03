@@ -9,17 +9,6 @@ services:
       - IS_PERSISTENT=TRUE
       - ANONYMIZED_TELEMETRY=FALSE
 
-  rclone:
-    image: rclone/rclone:latest
-    volumes:
-      - ./rclone-config:/config/rclone
-      - ./gdrive-data:/data
-    environment:
-      - RCLONE_CONFIG=/config/rclone/rclone.conf
-    command: sync gdrive:/ /data --progress
-    profiles:
-      - rclone
-
   ingest:
     image: ghcr.io/yetanotherchris/ingester:latest
     build:
@@ -28,6 +17,7 @@ services:
     volumes:
       - ./chromadb-data:/data
     environment:
+      - COLLECTION_NAME=${COLLECTION_NAME:-my notes}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
       - OPENROUTER_MODEL=${OPENROUTER_MODEL:-openai/text-embedding-3-small}
       - USE_LOCAL_EMBEDDINGS=${USE_LOCAL_EMBEDDINGS:-}

@@ -208,5 +208,3 @@ __marimo__/
 
 # Docker Compose data directories
 chromadb-data/
-rclone-config/
-gdrive-data/
