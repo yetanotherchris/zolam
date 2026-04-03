@@ -1,0 +1,12 @@
+{
+  "homepage": "https://github.com/yetanotherchris/ingester",
+  "description": "Semantic search file ingester for ChromaDB",
+  "version": "VERSION",
+  "architecture": {
+    "64bit": {
+      "url": "https://github.com/yetanotherchris/ingester/releases/download/vVERSION/ingester-windows-amd64.exe",
+      "hash": "SHA256",
+      "bin": ["ingester.exe"]
+    }
+  }
+}
