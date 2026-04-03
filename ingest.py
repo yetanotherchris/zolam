@@ -10,6 +10,9 @@ Optional: set USE_LOCAL_EMBEDDINGS=1 for offline sentence-transformers.
 Usage (Docker):
     docker run -v /chromadb/data:/data -v /obsidian:/sources/obsidian ingest --source obsidian
     docker run -v /chromadb/data:/data -v /gdrive:/sources/gdrive ingest --source gdrive
+    docker run -v /chromadb/data:/data -v /mydir:/sources/mydir ingest --directory /sources/mydir
+    docker run -v /chromadb/data:/data -v ... ingest --directory /sources/dir1 /sources/dir2
+    docker run -v /chromadb/data:/data -v ... ingest --directory /sources/mydir --extensions .md .txt
     docker run -v /chromadb/data:/data -v ... ingest --reset
     docker run -v /chromadb/data:/data ingest --stats
 
@@ -201,6 +204,11 @@ def ingest_source(collection, source_name: str, source_config: dict) -> int:
 def main():
     parser = argparse.ArgumentParser(description="Ingest files into ChromaDB")
     parser.add_argument("--source", choices=list(SOURCES.keys()), help="Ingest only this source")
+    parser.add_argument("--directory", nargs="+", metavar="DIR",
+                        help="Ingest files from one or more directories (recursively)")
+    parser.add_argument("--extensions", nargs="+", metavar="EXT",
+                        help="File extensions to include with --directory (e.g. .md .txt .pdf). "
+                             "Default: all supported extensions")
     parser.add_argument("--reset", action="store_true", help="Delete collection and re-ingest")
     parser.add_argument("--stats", action="store_true", help="Show collection stats and exit")
     args = parser.parse_args()
@@ -228,14 +236,29 @@ def main():
         kwargs["embedding_function"] = ef
     collection = client.get_or_create_collection(**kwargs)
 
-    sources = {args.source: SOURCES[args.source]} if args.source else SOURCES
     total = 0
 
-    for name, config in sources.items():
-        print(f"\nIngesting [{name}] from {config['path']}")
-        count = ingest_source(collection, name, config)
-        print(f"  Ingested {count} chunks")
-        total += count
+    if args.directory:
+        all_supported = list({ext for s in SOURCES.values() for ext in s["extensions"]})
+        extensions = args.extensions if args.extensions else all_supported
+        # Normalize extensions to include leading dot
+        extensions = [ext if ext.startswith(".") else f".{ext}" for ext in extensions]
+
+        for dir_path in args.directory:
+            resolved = Path(dir_path).resolve()
+            source_name = resolved.name
+            config = {"path": str(resolved), "extensions": extensions}
+            print(f"\nIngesting [{source_name}] from {resolved}")
+            count = ingest_source(collection, source_name, config)
+            print(f"  Ingested {count} chunks")
+            total += count
+    else:
+        sources = {args.source: SOURCES[args.source]} if args.source else SOURCES
+        for name, config in sources.items():
+            print(f"\nIngesting [{name}] from {config['path']}")
+            count = ingest_source(collection, name, config)
+            print(f"  Ingested {count} chunks")
+            total += count
 
     print(f"\nDone. Total chunks ingested: {total}")
     print(f"Collection now has {collection.count()} documents.")
