@@ -43,7 +43,7 @@ The repository includes wrapper scripts that handle the `docker compose` command
 ./ingest.sh ~/notes ~/docs
 
 # Filter by extension
-./ingest.sh --extensions .md .txt ~/docs
+./ingest.sh --extensions .md,.txt ~/docs
 
 # Check what's indexed
 ./ingest.sh --stats

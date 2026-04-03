@@ -13,7 +13,7 @@ param(
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$Directories,
 
-    [string[]]$Extensions,
+    [string]$Extensions,
 
     [switch]$Reset,
 
@@ -61,9 +61,10 @@ if ($Reset) {
 }
 $ingestArgs += "--directory"
 $ingestArgs += $containerDirs
-if ($Extensions -and $Extensions.Count -gt 0) {
+if ($Extensions) {
+    $extList = $Extensions -split ','
     $ingestArgs += "--extensions"
-    $ingestArgs += $Extensions
+    $ingestArgs += $extList
 }
 
 # Build extra docker args

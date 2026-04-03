@@ -8,7 +8,7 @@ Usage: ./ingest.sh [OPTIONS] <host-directory> [host-directory...]
 Ingest local directories into ChromaDB for semantic search.
 
 Options:
-  --extensions EXT [EXT...]   Filter by file extensions (e.g. .md .txt)
+  --extensions EXT,EXT,...    Filter by file extensions (e.g. .md,.txt)
   --reset                     Wipe the collection before ingesting
   --stats                     Show collection statistics (no directories needed)
   --collection NAME           Set the collection name (default: from .env or "my notes")
@@ -17,7 +17,7 @@ Options:
 Examples:
   ./ingest.sh ~/notes
   ./ingest.sh ~/notes ~/docs
-  ./ingest.sh --extensions .md .txt ~/docs
+  ./ingest.sh --extensions .md,.txt ~/docs
   ./ingest.sh --reset ~/notes
   ./ingest.sh --stats
 EOF
@@ -29,7 +29,6 @@ EXTENSIONS=()
 RESET=false
 STATS=false
 COLLECTION=""
-PARSING_EXTENSIONS=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -38,20 +37,18 @@ while [[ $# -gt 0 ]]; do
       ;;
     --stats)
       STATS=true
-      PARSING_EXTENSIONS=false
       shift
       ;;
     --reset)
       RESET=true
-      PARSING_EXTENSIONS=false
       shift
       ;;
     --extensions)
-      PARSING_EXTENSIONS=true
+      shift
+      IFS=',' read -ra EXTENSIONS <<< "$1"
       shift
       ;;
     --collection)
-      PARSING_EXTENSIONS=false
       shift
       COLLECTION="$1"
       shift
@@ -61,12 +58,7 @@ while [[ $# -gt 0 ]]; do
       exit 1
       ;;
     *)
-      if $PARSING_EXTENSIONS && [[ "$1" == .* ]]; then
-        EXTENSIONS+=("$1")
-      else
-        PARSING_EXTENSIONS=false
-        DIRS+=("$1")
-      fi
+      DIRS+=("$1")
       shift
       ;;
   esac
