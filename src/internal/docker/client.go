@@ -90,9 +90,11 @@ func (c *DockerClient) ComposeDown() error {
 	return cmd.Run()
 }
 
-func (c *DockerClient) ComposeRun(service string, args ...string) (*exec.Cmd, error) {
-	cmdArgs := []string{"run", "--rm", service}
-	cmdArgs = append(cmdArgs, args...)
+func (c *DockerClient) ComposeRun(service string, runArgs []string, containerArgs []string) (*exec.Cmd, error) {
+	cmdArgs := []string{"run", "--rm"}
+	cmdArgs = append(cmdArgs, runArgs...)
+	cmdArgs = append(cmdArgs, service)
+	cmdArgs = append(cmdArgs, containerArgs...)
 	cmd := c.composeCmd(cmdArgs...)
 	return cmd, nil
 }

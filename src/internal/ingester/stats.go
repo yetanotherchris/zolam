@@ -34,7 +34,7 @@ func (i *Ingester) GetStats(outputFn func(string)) (*Stats, error) {
 	stats.ChromaDBRunning = running
 
 	outputFn("Running ingest container with --stats...")
-	cmd, err := i.docker.ComposeRun("ingest", "--stats")
+	cmd, err := i.docker.ComposeRun("ingest", nil, []string{"--stats"})
 	if err != nil {
 		return stats, fmt.Errorf("creating stats command: %w", err)
 	}

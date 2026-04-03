@@ -7,9 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
-
-	"github.com/yetanotherchris/ingester/internal/docker"
+"github.com/yetanotherchris/ingester/internal/docker"
 	"github.com/yetanotherchris/ingester/internal/domain"
 )
 
@@ -87,29 +85,32 @@ func (i *Ingester) Run(directories []string, opts IngestOptions, outputFn func(s
 		containerDirs = append(containerDirs, containerDir)
 	}
 
-	// Build the ingest container arguments.
-	var args []string
-	args = append(args, volumeArgs...)
-	args = append(args, "--directory")
-	args = append(args, containerDirs...)
-
-	if len(opts.Extensions) > 0 {
-		args = append(args, "--extensions", strings.Join(opts.Extensions, ","))
-	}
+	// Build docker run args (volumes, env vars) and container args separately.
+	var runArgs []string
+	runArgs = append(runArgs, volumeArgs...)
 
 	if opts.CollectionName != "" {
-		args = append(args, "--collection", opts.CollectionName)
+		runArgs = append(runArgs, "-e", "COLLECTION_NAME="+opts.CollectionName)
+	}
+
+	var containerArgs []string
+	containerArgs = append(containerArgs, "--directory")
+	containerArgs = append(containerArgs, containerDirs...)
+
+	if len(opts.Extensions) > 0 {
+		containerArgs = append(containerArgs, "--extensions")
+		containerArgs = append(containerArgs, opts.Extensions...)
 	}
 
 	if opts.Reset {
-		args = append(args, "--reset")
+		containerArgs = append(containerArgs, "--reset")
 	}
 
 	if opts.Stats {
-		args = append(args, "--stats")
+		containerArgs = append(containerArgs, "--stats")
 	}
 
-	cmd, err := i.docker.ComposeRun("ingest", args...)
+	cmd, err := i.docker.ComposeRun("ingest", runArgs, containerArgs)
 	if err != nil {
 		return fmt.Errorf("creating ingest command: %w", err)
 	}
