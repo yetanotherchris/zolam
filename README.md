@@ -76,15 +76,14 @@ docker compose --profile ingest run --rm \
 
 ### Syncing Google Drive with rclone
 
-Instead of mounting an rclone config file, you can configure the rclone service entirely with environment variables. Add these to your `.env` file:
+Place your `rclone.conf` in the `rclone-config/` directory. You can generate one with `rclone config` on your host machine (the config file is typically at `~/.config/rclone/rclone.conf`). It should contain a `[gdrive]` remote, for example:
 
-```bash
-# .env
-OPENROUTER_API_KEY=sk-or-...
-RCLONE_CONFIG_GDRIVE_TYPE=drive
-RCLONE_CONFIG_GDRIVE_CLIENT_ID=your-client-id
-RCLONE_CONFIG_GDRIVE_CLIENT_SECRET=your-client-secret
-RCLONE_CONFIG_GDRIVE_TOKEN={"access_token":"...","token_type":"Bearer","refresh_token":"...","expiry":"..."}
+```ini
+[gdrive]
+type = drive
+client_id = your-client-id
+client_secret = your-client-secret
+token = {"access_token":"...","token_type":"Bearer","refresh_token":"...","expiry":"..."}
 ```
 
 Then sync and ingest:
@@ -96,8 +95,6 @@ docker compose --profile rclone run --rm rclone
 # Ingest the synced files
 docker compose --profile ingest run --rm ingest --source gdrive
 ```
-
-The `RCLONE_CONFIG_<REMOTE>_*` pattern lets you define any rclone remote without a config file. Replace `GDRIVE` with your remote name. See the [rclone docs](https://rclone.org/docs/#environment-variables) for details.
 
 ## Claude Code Integration (chroma-mcp)
 
