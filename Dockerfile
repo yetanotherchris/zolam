@@ -4,6 +4,7 @@ WORKDIR /app
 
 RUN pip install --no-cache-dir \
     chromadb \
+    openai \
     pymupdf \
     python-docx
 
