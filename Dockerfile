@@ -6,7 +6,8 @@ RUN pip install --no-cache-dir \
     chromadb \
     openai \
     pymupdf \
-    python-docx
+    python-docx \
+    tqdm
 
 COPY ingest.py .
 

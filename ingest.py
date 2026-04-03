@@ -34,6 +34,7 @@ import os
 from pathlib import Path
 
 import chromadb
+from tqdm import tqdm
 
 # ---------------------------------------------------------------------------
 # CONFIG
@@ -98,7 +99,7 @@ def extract_text(filepath: Path) -> str | None:
         try:
             return filepath.read_text(encoding="utf-8", errors="replace")
         except Exception as e:
-            print(f"  SKIP {filepath}: {e}")
+            tqdm.write(f"  SKIP {filepath}: {e}")
             return None
 
     if ext == ".pdf":
@@ -109,7 +110,7 @@ def extract_text(filepath: Path) -> str | None:
             doc.close()
             return text if text.strip() else None
         except Exception as e:
-            print(f"  SKIP {filepath}: {e}")
+            tqdm.write(f"  SKIP {filepath}: {e}")
             return None
 
     if ext == ".docx":
@@ -119,7 +120,7 @@ def extract_text(filepath: Path) -> str | None:
             text = "\n".join(p.text for p in doc.paragraphs)
             return text if text.strip() else None
         except Exception as e:
-            print(f"  SKIP {filepath}: {e}")
+            tqdm.write(f"  SKIP {filepath}: {e}")
             return None
 
     return None
@@ -166,10 +167,12 @@ def ingest_source(collection, source_name: str, source_config: dict) -> int:
         return 0
 
     count = 0
-    files = [f for ext in extensions for f in base_path.rglob(f"*{ext}")]
+    files = []
+    for ext in tqdm(extensions, desc="  Scanning extensions", unit="ext", leave=False):
+        files.extend(base_path.rglob(f"*{ext}"))
     print(f"  Found {len(files)} files")
 
-    for filepath in files:
+    for filepath in tqdm(files, desc="  Ingesting files", unit="file"):
         text = extract_text(filepath)
         if not text:
             continue
@@ -197,7 +200,7 @@ def ingest_source(collection, source_name: str, source_config: dict) -> int:
                     metadatas=metadatas[b:b + batch_size],
                 )
         except Exception as e:
-            print(f"  ERROR upserting {relative}: {e}")
+            tqdm.write(f"  ERROR upserting {relative}: {e}")
             continue
 
         count += len(chunks)
