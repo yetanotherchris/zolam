@@ -27,9 +27,9 @@ $releaseDate = (Get-Date).ToString("yyyy-MM-dd")
 foreach ($file in $manifestFiles) {
     $path = Join-Path $wingetDir $file
     $content = Get-Content -Path $path -Raw
-    $content = $content -replace 'VERSION', $Version
-    $content = $content -replace 'SHA256', $hash
-    $content = $content -replace 'RELEASEDATE', $releaseDate
+    $content = $content -replace '__VERSION__', $Version
+    $content = $content -replace '__SHA256__', $hash
+    $content = $content -replace '__RELEASEDATE__', $releaseDate
 
     Set-Content -Path $path -Value $content -NoNewline
     Write-Host "Updated $path with version $Version"
