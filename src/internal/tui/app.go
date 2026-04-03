@@ -103,8 +103,7 @@ func (m AppModel) updateMenu(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch chosen {
 	case 0: // Ingest
-		ext := strings.Join(m.config.Extensions, ", ")
-		m.ingest = NewIngestModel(ext)
+		m.ingest = NewIngestModel()
 		m.state = ingestView
 		return m, m.ingest.Init()
 
