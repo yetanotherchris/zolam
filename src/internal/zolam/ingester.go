@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 "github.com/yetanotherchris/zolam/internal/docker"
 	"github.com/yetanotherchris/zolam/internal/domain"
 )
@@ -67,21 +68,40 @@ func runAndStream(cmd streamableCmd, outputFn func(string)) error {
 		return fmt.Errorf("starting command: %w", err)
 	}
 
-	// Read both stdout and stderr
-	combined := io.MultiReader(stdout, stderr)
-	scanner := bufio.NewScanner(combined)
+	// Read stdout and stderr concurrently so neither blocks the other.
+	// Split on \n or \r so tqdm progress bars (which use \r) are emitted
+	// as they update rather than buffered into one giant line.
 	var lastLines []string
-	for scanner.Scan() {
-		line := scanner.Text()
-		outputFn(line)
-		lastLines = append(lastLines, line)
-		if len(lastLines) > 20 {
-			lastLines = lastLines[1:]
+	var mu sync.Mutex
+
+	scanLines := func(r io.Reader) {
+		scanner := bufio.NewScanner(r)
+		scanner.Split(splitOnNewlineOrCR)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if line == "" {
+				continue
+			}
+			mu.Lock()
+			outputFn(line)
+			lastLines = append(lastLines, line)
+			if len(lastLines) > 20 {
+				lastLines = lastLines[1:]
+			}
+			mu.Unlock()
 		}
 	}
 
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() { defer wg.Done(); scanLines(stdout) }()
+	go func() { defer wg.Done(); scanLines(stderr) }()
+	wg.Wait()
+
 	if err := cmd.Wait(); err != nil {
+		mu.Lock()
 		detail := strings.Join(lastLines, "\n")
+		mu.Unlock()
 		if detail != "" {
 			return fmt.Errorf("command failed: %w\nOutput:\n%s", err, detail)
 		}
@@ -89,6 +109,30 @@ func runAndStream(cmd streamableCmd, outputFn func(string)) error {
 	}
 
 	return nil
+}
+
+// splitOnNewlineOrCR is a bufio.SplitFunc that splits on \n, \r\n, or \r.
+// This allows tqdm-style progress bars (which use \r) to be streamed.
+func splitOnNewlineOrCR(data []byte, atEOF bool) (advance int, token []byte, err error) {
+	if atEOF && len(data) == 0 {
+		return 0, nil, nil
+	}
+	for i, b := range data {
+		if b == '\n' {
+			return i + 1, data[:i], nil
+		}
+		if b == '\r' {
+			// \r\n counts as one line ending
+			if i+1 < len(data) && data[i+1] == '\n' {
+				return i + 2, data[:i], nil
+			}
+			return i + 1, data[:i], nil
+		}
+	}
+	if atEOF {
+		return len(data), data, nil
+	}
+	return 0, nil, nil
 }
 
 // Run executes a full ingest for the given directories.
