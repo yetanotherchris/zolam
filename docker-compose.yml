@@ -17,7 +17,7 @@ services:
     volumes:
       - ./chromadb-data:/data
     environment:
-      - COLLECTION_NAME=${COLLECTION_NAME:-my notes}
+      - COLLECTION_NAME=${COLLECTION_NAME:-my-notes}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
       - OPENROUTER_MODEL=${OPENROUTER_MODEL:-openai/text-embedding-3-small}
       - USE_LOCAL_EMBEDDINGS=${USE_LOCAL_EMBEDDINGS:-}
