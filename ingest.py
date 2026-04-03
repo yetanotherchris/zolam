@@ -77,7 +77,7 @@ def get_embedding_function():
         )
 
     from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
-    model = os.environ.get("OPENROUTER_MODEL", "openai/text-embedding-3-small")
+    model = os.environ.get("OPENROUTER_MODEL") or "openai/text-embedding-3-small"
     print(f"Using OpenRouter embeddings: {model}")
     return OpenAIEmbeddingFunction(
         api_key=api_key,
@@ -189,12 +189,16 @@ def ingest_source(collection, source_name: str, source_config: dict) -> int:
         ]
 
         batch_size = 50
-        for b in range(0, len(chunks), batch_size):
-            collection.upsert(
-                documents=chunks[b:b + batch_size],
-                ids=ids[b:b + batch_size],
-                metadatas=metadatas[b:b + batch_size],
-            )
+        try:
+            for b in range(0, len(chunks), batch_size):
+                collection.upsert(
+                    documents=chunks[b:b + batch_size],
+                    ids=ids[b:b + batch_size],
+                    metadatas=metadatas[b:b + batch_size],
+                )
+        except Exception as e:
+            print(f"  ERROR upserting {relative}: {e}")
+            continue
 
         count += len(chunks)
 
