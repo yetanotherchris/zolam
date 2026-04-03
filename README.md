@@ -1,4 +1,4 @@
-# ingester
+# zolam
 
 Ingest your personal files into ChromaDB for semantic search in Claude.
 
