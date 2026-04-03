@@ -16,6 +16,11 @@ services:
       - ./gdrive-data:/data
     environment:
       - RCLONE_CONFIG=/config/rclone/rclone.conf
+      - RCLONE_CONFIG_GDRIVE_TYPE=${RCLONE_CONFIG_GDRIVE_TYPE:-}
+      - RCLONE_CONFIG_GDRIVE_CLIENT_ID=${RCLONE_CONFIG_GDRIVE_CLIENT_ID:-}
+      - RCLONE_CONFIG_GDRIVE_CLIENT_SECRET=${RCLONE_CONFIG_GDRIVE_CLIENT_SECRET:-}
+      - RCLONE_CONFIG_GDRIVE_TOKEN=${RCLONE_CONFIG_GDRIVE_TOKEN:-}
+      - RCLONE_CONFIG_GDRIVE_TEAM_DRIVE=${RCLONE_CONFIG_GDRIVE_TEAM_DRIVE:-}
     command: sync gdrive:/ /data --progress
     profiles:
       - rclone
