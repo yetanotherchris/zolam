@@ -32,6 +32,10 @@ services:
       dockerfile: Dockerfile
     volumes:
       - ./chromadb-data:/data
+    environment:
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - OPENROUTER_MODEL=${OPENROUTER_MODEL:-}
+      - USE_LOCAL_EMBEDDINGS=${USE_LOCAL_EMBEDDINGS:-}
     depends_on:
       - chromadb
     profiles:
