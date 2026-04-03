@@ -31,6 +31,19 @@ type AppModel struct {
 	dockerClient *docker.DockerClient
 	ingester     *zolam.Ingester
 	warnings     []string
+	sender       *ProgramSender
+}
+
+// ProgramSender holds a reference to the tea.Program for sending messages
+// from background goroutines. It's a pointer so it survives bubbletea's
+// model copying.
+type ProgramSender struct {
+	Program *tea.Program
+}
+
+// Sender returns the ProgramSender so callers can set the program reference.
+func (m AppModel) Sender() *ProgramSender {
+	return m.sender
 }
 
 // NewApp creates a new AppModel with the given dependencies.
@@ -42,6 +55,7 @@ func NewApp(cfg *domain.Config, dc *docker.DockerClient, ing *zolam.Ingester, wa
 		dockerClient: dc,
 		ingester:     ing,
 		warnings:     warnings,
+		sender:       &ProgramSender{},
 	}
 }
 
@@ -219,15 +233,16 @@ func (m AppModel) runIngest(directories []string, extensions string) tea.Cmd {
 			CollectionName: m.config.CollectionName,
 		}
 
-		var lines []string
+		p := m.sender.Program
 		err := m.ingester.Run(directories, opts, func(line string) {
-			lines = append(lines, line)
+			if p != nil {
+				p.Send(OutputLineMsg{Line: line})
+			}
 		})
-		output := strings.Join(lines, "\n")
 		if err != nil {
-			return OperationDoneMsg{Err: err, Output: output}
+			return OperationDoneMsg{Err: err}
 		}
-		return OperationDoneMsg{Output: output}
+		return OperationDoneMsg{}
 	}
 }
 
@@ -242,7 +257,12 @@ func (m AppModel) runUpdateOnly() tea.Cmd {
 			return OperationDoneMsg{Err: fmt.Errorf("no directories configured")}
 		}
 
-		result, err := m.ingester.RunUpdateOnly(dirs, func(line string) {})
+		p := m.sender.Program
+		result, err := m.ingester.RunUpdateOnly(dirs, func(line string) {
+			if p != nil {
+				p.Send(OutputLineMsg{Line: line})
+			}
+		})
 		if err != nil {
 			return OperationDoneMsg{Err: err}
 		}
@@ -282,7 +302,12 @@ func (m AppModel) runStats() tea.Cmd {
 			return OperationDoneMsg{Err: err}
 		}
 
-		stats, err := m.ingester.GetStats(func(line string) {})
+		p := m.sender.Program
+		stats, err := m.ingester.GetStats(func(line string) {
+			if p != nil {
+				p.Send(OutputLineMsg{Line: line})
+			}
+		})
 		if err != nil {
 			return OperationDoneMsg{Err: err}
 		}
@@ -304,7 +329,12 @@ func (m AppModel) runReset() tea.Cmd {
 			Reset:          true,
 		}
 
-		err := m.ingester.Run(nil, opts, func(line string) {})
+		p := m.sender.Program
+		err := m.ingester.Run(nil, opts, func(line string) {
+			if p != nil {
+				p.Send(OutputLineMsg{Line: line})
+			}
+		})
 		if err != nil {
 			return OperationDoneMsg{Err: err}
 		}

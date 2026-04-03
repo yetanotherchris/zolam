@@ -71,6 +71,7 @@ func runTUI(cmd *cobra.Command, args []string) error {
 
 	app := tui.NewApp(cfg, dc, ing, warnings)
 	p := tea.NewProgram(app, tea.WithAltScreen())
+	app.Sender().Program = p
 	_, err = p.Run()
 	return err
 }
