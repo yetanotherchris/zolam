@@ -1,21 +1,22 @@
-FROM python:3.12-slim
+FROM python:3.12-slim AS builder
 
-WORKDIR /app
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
 RUN pip install --no-cache-dir \
-    chromadb \
+    chromadb-client \
     pymupdf \
     python-docx \
-    tqdm
+    tqdm \
+    && pip uninstall -y pip \
+    && find /opt/venv -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null; true
 
-# Pre-download and extract the embedding model (all-MiniLM-L6-v2) so it's
-# available at runtime without network access or re-extraction.
-RUN python -c "\
-from chromadb.utils.embedding_functions.onnx_mini_lm_l6_v2 import ONNXMiniLM_L6_V2; \
-ef = ONNXMiniLM_L6_V2(); \
-ef(['warmup'])" \
-    && rm -f /root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz
+FROM python:3.12-slim
 
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+WORKDIR /app
 COPY ingest.py .
 
 ENTRYPOINT ["python", "ingest.py"]
