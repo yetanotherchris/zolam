@@ -204,7 +204,7 @@ func newDownloadCmd() *cobra.Command {
 				source = cfg.RcloneSource
 			}
 			if dest == "" {
-				dest = cfg.DataDir
+				dest = cfg.DownloadsDir()
 			}
 			if configDir == "" {
 				configDir = cfg.RcloneConfigDir
@@ -411,7 +411,7 @@ func newConfigCmd() *cobra.Command {
 			fmt.Println("─────────────────────")
 			fmt.Printf("Config file:         %s\n", domain.ConfigPath())
 			fmt.Printf("Collection Name:     %s\n", cfg.CollectionName)
-			fmt.Printf("Data Directory:      %s\n", cfg.DataDir)
+			fmt.Printf("Zolam Directory:     %s\n", cfg.DataDir)
 			fmt.Printf("rclone Source:       %s\n", cfg.RcloneSource)
 			fmt.Printf("rclone Config Dir:   %s\n", cfg.RcloneConfigDir)
 

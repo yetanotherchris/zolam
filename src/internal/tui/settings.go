@@ -23,7 +23,7 @@ var settingsFields = []settingsField{
 		set:   func(c *domain.Config, v string) { c.CollectionName = v },
 	},
 	{
-		label: "Data Dir",
+		label: "Zolam Dir",
 		get:   func(c *domain.Config) string { return c.DataDir },
 		set:   func(c *domain.Config, v string) { c.DataDir = v },
 	},

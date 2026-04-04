@@ -266,7 +266,7 @@ func (m AppModel) runUpdateOnly() tea.Cmd {
 
 func (m AppModel) runRclone() tea.Cmd {
 	return func() tea.Msg {
-		cmd, err := m.dockerClient.RcloneCopy(m.config.RcloneSource, m.config.DataDir, m.config.RcloneConfigDir)
+		cmd, err := m.dockerClient.RcloneCopy(m.config.RcloneSource, m.config.DownloadsDir(), m.config.RcloneConfigDir)
 		if err != nil {
 			return OperationDoneMsg{Err: err}
 		}

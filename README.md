@@ -73,7 +73,7 @@ Located at `~/.zolam/config.json`. Created automatically after your first ingest
   "collectionName": "my-notes",
   "rcloneSource": "",
   "rcloneConfigDir": "~/.config/rclone",
-  "dataDir": "~/.zolam/chromadb-data",
+  "dataDir": "~/.zolam",
   "directories": [
     {
       "path": "/home/user/notes",
@@ -85,6 +85,10 @@ Located at `~/.zolam/config.json`. Created automatically after your first ingest
 
 The `directories` node stores previously ingested directories and their file extensions. This allows `zolam update` to run without arguments - it reads the directories from config.
 
+Subdirectories within `dataDir` are created by convention:
+- `chromadb/` - ChromaDB persistent storage
+- `downloads/` - rclone download destination
+
 ### Environment Variables
 
 | Variable | Default | Description |
@@ -92,7 +96,7 @@ The `directories` node stores previously ingested directories and their file ext
 | `COLLECTION_NAME` | `my-notes` | ChromaDB collection name |
 | `RCLONE_SOURCE` | | Source path on remote |
 | `RCLONE_CONFIG_DIR` | `~/.config/rclone` | rclone config directory |
-| `ZOLAM_DATA_DIR` | `~/.zolam/chromadb-data` | Local ChromaDB data directory |
+| `ZOLAM_DATA_DIR` | `~/.zolam` | Zolam data directory |
 
 ### Supported File Extensions
 

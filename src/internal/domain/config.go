@@ -79,9 +79,19 @@ func loadEnvFile(path string) {
 func defaultDataDir() string {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return "./chromadb-data"
+		return "./.zolam"
 	}
-	return filepath.ToSlash(filepath.Join(homeDir, ".zolam", "chromadb-data"))
+	return filepath.ToSlash(filepath.Join(homeDir, ".zolam"))
+}
+
+// ChromaDir returns the ChromaDB data directory (DataDir/chromadb).
+func (c *Config) ChromaDir() string {
+	return filepath.ToSlash(filepath.Join(c.DataDir, "chromadb"))
+}
+
+// DownloadsDir returns the rclone downloads directory (DataDir/downloads).
+func (c *Config) DownloadsDir() string {
+	return filepath.ToSlash(filepath.Join(c.DataDir, "downloads"))
 }
 
 func defaultRcloneConfigDir() string {
@@ -92,8 +102,14 @@ func defaultRcloneConfigDir() string {
 	return filepath.ToSlash(filepath.Join(homeDir, ".config", "rclone"))
 }
 
+// configPathOverride allows tests to redirect config.json to a temp file.
+var configPathOverride string
+
 // ConfigPath returns the path to the config.json file (~/.zolam/config.json).
 func ConfigPath() string {
+	if configPathOverride != "" {
+		return configPathOverride
+	}
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return "config.json"

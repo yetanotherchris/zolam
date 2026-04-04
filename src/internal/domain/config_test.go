@@ -8,6 +8,10 @@ import (
 )
 
 func TestLoadConfig_Defaults(t *testing.T) {
+	// Point config.json to a non-existent temp file so the real one doesn't interfere.
+	configPathOverride = filepath.Join(t.TempDir(), "config.json")
+	t.Cleanup(func() { configPathOverride = "" })
+
 	for _, key := range []string{
 		"COLLECTION_NAME",
 		"RCLONE_SOURCE",
@@ -25,7 +29,7 @@ func TestLoadConfig_Defaults(t *testing.T) {
 		t.Errorf("CollectionName = %q, want %q", cfg.CollectionName, "my-notes")
 	}
 	homeDir, _ := os.UserHomeDir()
-	expectedDataDir := filepath.ToSlash(filepath.Join(homeDir, ".zolam", "chromadb-data"))
+	expectedDataDir := filepath.ToSlash(filepath.Join(homeDir, ".zolam"))
 	if cfg.DataDir != expectedDataDir {
 		t.Errorf("DataDir = %q, want %q", cfg.DataDir, expectedDataDir)
 	}
@@ -39,6 +43,9 @@ func TestLoadConfig_Defaults(t *testing.T) {
 }
 
 func TestLoadConfig_EnvVars(t *testing.T) {
+	configPathOverride = filepath.Join(t.TempDir(), "config.json")
+	t.Cleanup(func() { configPathOverride = "" })
+
 	t.Setenv("COLLECTION_NAME", "test-collection")
 	t.Setenv("RCLONE_SOURCE", "")
 	t.Setenv("RCLONE_CONFIG_DIR", "")
@@ -104,7 +111,7 @@ func TestConfigJSON_LoadSave(t *testing.T) {
 		CollectionName:  "test-col",
 		RcloneSource:    "gdrive:docs",
 		RcloneConfigDir: "/home/user/.config/rclone",
-		DataDir:         "/home/user/.zolam/chromadb-data",
+		DataDir:         "/home/user/.zolam",
 		Directories: []DirectoryEntry{
 			{Path: "/home/user/notes", Extensions: []string{".md", ".txt"}},
 		},
