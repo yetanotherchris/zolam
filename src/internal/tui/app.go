@@ -3,6 +3,7 @@ package tui
 import (
 	"bytes"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -27,6 +28,7 @@ type AppModel struct {
 	menu         MenuModel
 	ingest       IngestModel
 	progress     ProgressModel
+	settings     SettingsModel
 	config       *domain.Config
 	dockerClient *docker.DockerClient
 	ingester     *zolam.Ingester
@@ -138,6 +140,7 @@ func (m AppModel) updateMenu(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.runStopChromaDB()
 
 	case 7: // Settings
+		m.settings = NewSettingsModel(m.config)
 		m.state = settingsView
 		return m, nil
 
@@ -161,15 +164,9 @@ func (m AppModel) updateProgress(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m AppModel) updateSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if msg, ok := msg.(tea.KeyMsg); ok {
-		switch msg.String() {
-		case "esc", "enter", "q":
-			m.state = menuView
-			m.menu.chosen = -1
-			return m, nil
-		}
-	}
-	return m, nil
+	var cmd tea.Cmd
+	m.settings, cmd = m.settings.Update(msg)
+	return m, cmd
 }
 
 func (m AppModel) View() string {
@@ -188,22 +185,9 @@ func (m AppModel) View() string {
 	case progressView:
 		return DocStyle.Render(m.progress.View())
 	case settingsView:
-		return DocStyle.Render(m.settingsView())
+		return DocStyle.Render(m.settings.View())
 	}
 	return ""
-}
-
-func (m AppModel) settingsView() string {
-	s := TitleStyle.Render("Settings") + "\n\n"
-
-	s += fmt.Sprintf("  Collection Name:     %s\n", m.config.CollectionName)
-	s += fmt.Sprintf("  Rclone Source:       %s\n", m.config.RcloneSource)
-	s += fmt.Sprintf("  Rclone Config Dir:   %s\n", m.config.RcloneConfigDir)
-	s += fmt.Sprintf("  Data Dir:            %s\n", m.config.DataDir)
-	s += fmt.Sprintf("  Extensions:          %s\n", strings.Join(m.config.Extensions, ", "))
-
-	s += "\n" + HelpStyle.Render("esc/enter/q: back to menu")
-	return s
 }
 
 // --- Commands that run operations in goroutines ---
@@ -233,6 +217,19 @@ func (m AppModel) runIngest(directories []string, extensions string) tea.Cmd {
 		if err != nil {
 			return OperationDoneMsg{Err: err}
 		}
+
+		// Save ingested directories to config.json
+		for _, dir := range directories {
+			absPath, absErr := filepath.Abs(dir)
+			if absErr != nil {
+				absPath = dir
+			}
+			m.config.AddOrUpdateDirectory(filepath.ToSlash(absPath), exts)
+		}
+		if saveErr := domain.SaveConfig(m.config); saveErr != nil {
+			return OperationDoneMsg{Output: fmt.Sprintf("Ingest complete, but could not save config: %v", saveErr)}
+		}
+
 		return OperationDoneMsg{}
 	}
 }
@@ -243,9 +240,13 @@ func (m AppModel) runUpdateOnly() tea.Cmd {
 			return OperationDoneMsg{Err: err}
 		}
 
-		dirs := m.config.Directories
-		if len(dirs) == 0 {
+		if len(m.config.Directories) == 0 {
 			return OperationDoneMsg{Err: fmt.Errorf("no directories configured")}
+		}
+
+		var dirs []string
+		for _, d := range m.config.Directories {
+			dirs = append(dirs, d.Path)
 		}
 
 		p := m.sender.Program
@@ -265,7 +266,7 @@ func (m AppModel) runUpdateOnly() tea.Cmd {
 
 func (m AppModel) runRclone() tea.Cmd {
 	return func() tea.Msg {
-		cmd, err := m.dockerClient.RcloneCopy(m.config.RcloneSource, m.config.DataDir, m.config.RcloneConfigDir)
+		cmd, err := m.dockerClient.RcloneCopy(m.config.RcloneSource, m.config.DownloadsDir(), m.config.RcloneConfigDir)
 		if err != nil {
 			return OperationDoneMsg{Err: err}
 		}

@@ -20,7 +20,7 @@ var menuItems = []MenuItem{
 	{Name: "Reset Collection", Description: "Delete and recreate collection"},
 	{Name: "Start ChromaDB", Description: "Start the ChromaDB container"},
 	{Name: "Stop ChromaDB", Description: "Stop the ChromaDB container"},
-	{Name: "Settings", Description: "View current configuration"},
+	{Name: "Settings", Description: "Edit configuration"},
 	{Name: "Quit", Description: "Exit the application"},
 }
 

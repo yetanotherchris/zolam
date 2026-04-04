@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/yetanotherchris/zolam/internal/domain"
 )
 
 // StartIngestMsg is sent when the user confirms the ingest configuration.
@@ -17,12 +18,8 @@ type StartIngestMsg struct {
 // BackToMenuMsg is sent when the user wants to return to the main menu.
 type BackToMenuMsg struct{}
 
-// allExtensions is the list of supported extensions available for selection.
-var allExtensions = []string{
-	".md", ".pdf", ".docx", ".txt",
-	".py", ".cs", ".js", ".ts",
-	".json", ".yml", ".yaml",
-}
+// allExtensions references the supported extensions for selection in the TUI.
+var allExtensions = domain.SupportedFileExtensions
 
 // IngestModel is the bubbletea model for configuring an ingest run.
 type IngestModel struct {
