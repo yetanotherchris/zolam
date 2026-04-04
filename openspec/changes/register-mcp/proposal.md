@@ -6,7 +6,9 @@ Setting up the chroma-mcp server for Claude Code requires remembering the exact 
 
 ## Scope
 
-- Add a new `zolam mcp` subcommand that runs `claude mcp add --scope user chroma -- uvx chroma-mcp --client-type http --host localhost --port 8000 --ssl false`
-- The command shells out to `claude` CLI, so it requires Claude Code to be installed
-- No flags needed initially -- the command uses sensible defaults matching the current setup
+- Add a new `zolam mcp <provider>` subcommand (e.g. `zolam mcp claude`)
+- Takes a required provider argument -- currently only `claude` is supported
+- For `claude`: runs `claude mcp add --scope user chroma -- uvx chroma-mcp --client-type http --host localhost --port 8000 --ssl false`
+- The command shells out to the provider's CLI, so it requires the provider to be installed
+- Returns a clear error for unsupported providers
 - Update README to reference the new command
