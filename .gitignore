@@ -209,3 +209,5 @@ __marimo__/
 # Docker Compose data directories
 chromadb-data/
 src/zolam
+src/*.exe
+.claude/settings.local.json
