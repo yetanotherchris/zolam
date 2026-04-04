@@ -245,7 +245,16 @@ func (i *Ingester) RunUpdateOnly(directories []string, outputFn func(string)) (*
 			return nil, fmt.Errorf("resolving path %s: %w", dir, err)
 		}
 
-		hashes, err := HashDirectory(absPath, i.config.Extensions)
+		// Use per-directory extensions from config if available, otherwise supported defaults.
+		exts := domain.SupportedFileExtensions
+		for _, d := range i.config.Directories {
+			if d.Path == filepath.ToSlash(absPath) && len(d.Extensions) > 0 {
+				exts = d.Extensions
+				break
+			}
+		}
+
+		hashes, err := HashDirectory(absPath, exts)
 		if err != nil {
 			return nil, fmt.Errorf("hashing directory %s: %w", absPath, err)
 		}
@@ -291,7 +300,7 @@ func (i *Ingester) RunUpdateOnly(directories []string, outputFn func(string)) (*
 			len(filesToIngest), added, changed, unchanged, removed))
 
 		opts := IngestOptions{
-			Extensions:     i.config.Extensions,
+			Extensions:     domain.SupportedFileExtensions,
 			CollectionName: i.config.CollectionName,
 		}
 

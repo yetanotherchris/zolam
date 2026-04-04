@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -107,16 +108,32 @@ func newIngestCmd() *cobra.Command {
 			if len(extensions) > 0 {
 				opts.Extensions = extensions
 			} else {
-				opts.Extensions = cfg.Extensions
+				opts.Extensions = domain.SupportedFileExtensions
 			}
 
 			if err := requireChromaDB(dc); err != nil {
 				return err
 			}
 
-			return ing.Run(args, opts, func(line string) {
+			if err := ing.Run(args, opts, func(line string) {
 				fmt.Println(line)
-			})
+			}); err != nil {
+				return err
+			}
+
+			// Save ingested directories and extensions to config.json
+			for _, dir := range args {
+				absPath, absErr := filepath.Abs(dir)
+				if absErr != nil {
+					absPath = dir
+				}
+				cfg.AddOrUpdateDirectory(filepath.ToSlash(absPath), opts.Extensions)
+			}
+			if err := domain.SaveConfig(cfg); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: could not save config: %v\n", err)
+			}
+
+			return nil
 		},
 	}
 
@@ -131,20 +148,30 @@ func newUpdateCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "update [directories...]",
 		Short: "Re-ingest only changed files",
-		Long:  "Scan directories and only re-ingest files whose content has changed since last run.",
-		Args:  cobra.MinimumNArgs(1),
+		Long:  "Scan directories and only re-ingest files whose content has changed since last run.\nIf no directories are given, reads from ~/.zolam/config.json.",
+		Args:  cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, dc, ing, _, err := initServices()
 			if err != nil {
 				return err
 			}
-			_ = cfg
 
 			if err := requireChromaDB(dc); err != nil {
 				return err
 			}
 
-			result, err := ing.RunUpdateOnly(args, func(line string) {
+			dirs := args
+			if len(dirs) == 0 {
+				if len(cfg.Directories) == 0 {
+					return fmt.Errorf("no directories specified and none found in config.json.\nRun 'zolam ingest <dir>' first, or pass directories as arguments")
+				}
+				for _, d := range cfg.Directories {
+					dirs = append(dirs, d.Path)
+				}
+				fmt.Printf("Using %d directory(ies) from config.json\n", len(dirs))
+			}
+
+			result, err := ing.RunUpdateOnly(dirs, func(line string) {
 				fmt.Println(line)
 			})
 			if err != nil {
@@ -235,6 +262,15 @@ func newStatsCmd() *cobra.Command {
 
 			fmt.Printf("\nCollection: %s\n", cfg.CollectionName)
 			fmt.Printf("ChromaDB:   running\n")
+			fmt.Printf("Supported extensions: %s\n", strings.Join(domain.SupportedFileExtensions, ", "))
+
+			if len(cfg.Directories) > 0 {
+				fmt.Println("\nIngested directories:")
+				for _, d := range cfg.Directories {
+					fmt.Printf("  %s (%s)\n", d.Path, strings.Join(d.Extensions, ", "))
+				}
+			}
+
 			return nil
 		},
 	}
@@ -364,7 +400,7 @@ func newConfigCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "config",
 		Short: "Show current configuration",
-		Long:  "Display the current configuration settings from environment variables and .env file.",
+		Long:  "Display the current configuration settings.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, _, _, warnings, err := initServices()
 			if err != nil {
@@ -373,16 +409,23 @@ func newConfigCmd() *cobra.Command {
 
 			fmt.Println("Current Configuration:")
 			fmt.Println("─────────────────────")
+			fmt.Printf("Config file:         %s\n", domain.ConfigPath())
 			fmt.Printf("Collection Name:     %s\n", cfg.CollectionName)
 			fmt.Printf("Data Directory:      %s\n", cfg.DataDir)
 			fmt.Printf("rclone Source:       %s\n", cfg.RcloneSource)
 			fmt.Printf("rclone Config Dir:   %s\n", cfg.RcloneConfigDir)
-			fmt.Printf("Extensions:          %v\n", cfg.Extensions)
+
+			if len(cfg.Directories) > 0 {
+				fmt.Println("\nIngested directories:")
+				for _, d := range cfg.Directories {
+					fmt.Printf("  %s (%s)\n", d.Path, strings.Join(d.Extensions, ", "))
+				}
+			}
 
 			if len(warnings) > 0 {
 				fmt.Println("\nWarnings:")
 				for _, w := range warnings {
-					fmt.Printf("  ⚠ %s\n", w)
+					fmt.Printf("  ! %s\n", w)
 				}
 			}
 

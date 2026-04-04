@@ -3,6 +3,7 @@ package tui
 import (
 	"bytes"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -200,7 +201,13 @@ func (m AppModel) settingsView() string {
 	s += fmt.Sprintf("  Rclone Source:       %s\n", m.config.RcloneSource)
 	s += fmt.Sprintf("  Rclone Config Dir:   %s\n", m.config.RcloneConfigDir)
 	s += fmt.Sprintf("  Data Dir:            %s\n", m.config.DataDir)
-	s += fmt.Sprintf("  Extensions:          %s\n", strings.Join(m.config.Extensions, ", "))
+
+	if len(m.config.Directories) > 0 {
+		s += "\n  Ingested directories:\n"
+		for _, d := range m.config.Directories {
+			s += fmt.Sprintf("    %s (%s)\n", d.Path, strings.Join(d.Extensions, ", "))
+		}
+	}
 
 	s += "\n" + HelpStyle.Render("esc/enter/q: back to menu")
 	return s
@@ -233,6 +240,17 @@ func (m AppModel) runIngest(directories []string, extensions string) tea.Cmd {
 		if err != nil {
 			return OperationDoneMsg{Err: err}
 		}
+
+		// Save ingested directories to config.json
+		for _, dir := range directories {
+			absPath, absErr := filepath.Abs(dir)
+			if absErr != nil {
+				absPath = dir
+			}
+			m.config.AddOrUpdateDirectory(filepath.ToSlash(absPath), exts)
+		}
+		_ = domain.SaveConfig(m.config)
+
 		return OperationDoneMsg{}
 	}
 }
@@ -243,9 +261,13 @@ func (m AppModel) runUpdateOnly() tea.Cmd {
 			return OperationDoneMsg{Err: err}
 		}
 
-		dirs := m.config.Directories
-		if len(dirs) == 0 {
+		if len(m.config.Directories) == 0 {
 			return OperationDoneMsg{Err: fmt.Errorf("no directories configured")}
+		}
+
+		var dirs []string
+		for _, d := range m.config.Directories {
+			dirs = append(dirs, d.Path)
 		}
 
 		p := m.sender.Program

@@ -1,13 +1,13 @@
 package domain
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
 )
 
 func TestLoadConfig_Defaults(t *testing.T) {
-	// Clear all relevant env vars so defaults are used.
 	for _, key := range []string{
 		"COLLECTION_NAME",
 		"RCLONE_SOURCE",
@@ -36,20 +36,6 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	if cfg.RcloneConfigDir != expectedRcloneConfigDir {
 		t.Errorf("RcloneConfigDir = %q, want %q", cfg.RcloneConfigDir, expectedRcloneConfigDir)
 	}
-
-	expectedExts := []string{
-		".md", ".pdf", ".docx", ".txt",
-		".py", ".cs", ".js", ".ts",
-		".json", ".yml", ".yaml",
-	}
-	if len(cfg.Extensions) != len(expectedExts) {
-		t.Fatalf("Extensions length = %d, want %d", len(cfg.Extensions), len(expectedExts))
-	}
-	for i, ext := range expectedExts {
-		if cfg.Extensions[i] != ext {
-			t.Errorf("Extensions[%d] = %q, want %q", i, cfg.Extensions[i], ext)
-		}
-	}
 }
 
 func TestLoadConfig_EnvVars(t *testing.T) {
@@ -76,8 +62,8 @@ func TestMergeFlags(t *testing.T) {
 	}
 
 	flags := map[string]string{
-		"collection-name":  "overridden-collection",
-		"data-dir":         "/new/path",
+		"collection-name":   "overridden-collection",
+		"data-dir":          "/new/path",
 		"rclone-config-dir": "/new/rclone/config",
 	}
 
@@ -93,9 +79,89 @@ func TestMergeFlags(t *testing.T) {
 		t.Errorf("RcloneConfigDir = %q, want %q", cfg.RcloneConfigDir, "/new/rclone/config")
 	}
 
-	// Verify that empty flag values don't override.
 	cfg.MergeFlags(map[string]string{"collection-name": ""})
 	if cfg.CollectionName != "overridden-collection" {
 		t.Errorf("CollectionName changed to %q after empty flag, should remain %q", cfg.CollectionName, "overridden-collection")
+	}
+}
+
+func TestSupportedFileExtensions(t *testing.T) {
+	if len(SupportedFileExtensions) == 0 {
+		t.Fatal("SupportedFileExtensions should not be empty")
+	}
+	for _, ext := range SupportedFileExtensions {
+		if ext[0] != '.' {
+			t.Errorf("extension %q should start with a dot", ext)
+		}
+	}
+}
+
+func TestConfigJSON_LoadSave(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "config.json")
+
+	cfg := &Config{
+		CollectionName:  "test-col",
+		RcloneSource:    "gdrive:docs",
+		RcloneConfigDir: "/home/user/.config/rclone",
+		DataDir:         "/home/user/.zolam/chromadb-data",
+		Directories: []DirectoryEntry{
+			{Path: "/home/user/notes", Extensions: []string{".md", ".txt"}},
+		},
+	}
+
+	// Write config via the JSON format directly (simulating SaveConfig)
+	cj := configJSON{
+		CollectionName:  cfg.CollectionName,
+		RcloneSource:    cfg.RcloneSource,
+		RcloneConfigDir: cfg.RcloneConfigDir,
+		DataDir:         cfg.DataDir,
+		Directories:     cfg.Directories,
+	}
+	data, err := json.MarshalIndent(cj, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Load it back
+	loaded, err := loadConfigJSON(path)
+	if err != nil {
+		t.Fatalf("loadConfigJSON: %v", err)
+	}
+
+	if loaded.CollectionName != "test-col" {
+		t.Errorf("CollectionName = %q, want %q", loaded.CollectionName, "test-col")
+	}
+	if len(loaded.Directories) != 1 {
+		t.Fatalf("Directories length = %d, want 1", len(loaded.Directories))
+	}
+	if loaded.Directories[0].Path != "/home/user/notes" {
+		t.Errorf("Directory path = %q, want %q", loaded.Directories[0].Path, "/home/user/notes")
+	}
+}
+
+func TestAddOrUpdateDirectory(t *testing.T) {
+	cfg := &Config{}
+
+	cfg.AddOrUpdateDirectory("/home/user/notes", []string{".md"})
+	if len(cfg.Directories) != 1 {
+		t.Fatalf("expected 1 directory, got %d", len(cfg.Directories))
+	}
+
+	cfg.AddOrUpdateDirectory("/home/user/docs", []string{".pdf"})
+	if len(cfg.Directories) != 2 {
+		t.Fatalf("expected 2 directories, got %d", len(cfg.Directories))
+	}
+
+	// Update existing
+	cfg.AddOrUpdateDirectory("/home/user/notes", []string{".md", ".txt"})
+	if len(cfg.Directories) != 2 {
+		t.Fatalf("expected 2 directories after update, got %d", len(cfg.Directories))
+	}
+	if len(cfg.Directories[0].Extensions) != 2 {
+		t.Errorf("expected 2 extensions after update, got %d", len(cfg.Directories[0].Extensions))
 	}
 }
