@@ -2,22 +2,18 @@ package domain
 
 import (
 	"bufio"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 )
 
 type Config struct {
-	OpenRouterAPIKey   string
-	OpenRouterModel    string
-	CollectionName     string
-	UseLocalEmbeddings bool
-	RcloneSource       string
-	RcloneConfigDir    string
-	DataDir            string
-	Extensions         []string
-	Directories        []string
+	CollectionName  string
+	RcloneSource    string
+	RcloneConfigDir string
+	DataDir         string
+	Extensions      []string
+	Directories     []string
 }
 
 var defaultExtensions = []string{
@@ -93,14 +89,11 @@ func LoadConfig() (*Config, []string, error) {
 	loadEnvFile(".env")
 
 	cfg := &Config{
-		OpenRouterAPIKey:   os.Getenv("OPENROUTER_API_KEY"),
-		OpenRouterModel:    getEnvOrDefault("OPENROUTER_MODEL", "openai/text-embedding-3-small"),
-		CollectionName:     getEnvOrDefault("COLLECTION_NAME", "my-notes"),
-		UseLocalEmbeddings: os.Getenv("USE_LOCAL_EMBEDDINGS") == "1",
-		RcloneSource:       os.Getenv("RCLONE_SOURCE"),
-		RcloneConfigDir:    getEnvOrDefault("RCLONE_CONFIG_DIR", defaultRcloneConfigDir()),
-		DataDir:            getEnvOrDefault("ZOLAM_DATA_DIR", defaultDataDir()),
-		Extensions:         append([]string{}, defaultExtensions...),
+		CollectionName:  getEnvOrDefault("COLLECTION_NAME", "my-notes"),
+		RcloneSource:    os.Getenv("RCLONE_SOURCE"),
+		RcloneConfigDir: getEnvOrDefault("RCLONE_CONFIG_DIR", defaultRcloneConfigDir()),
+		DataDir:         getEnvOrDefault("ZOLAM_DATA_DIR", defaultDataDir()),
+		Extensions:      append([]string{}, defaultExtensions...),
 	}
 
 	warnings, errs := cfg.Validate()
@@ -115,21 +108,11 @@ func LoadConfig() (*Config, []string, error) {
 }
 
 // MergeFlags overrides config values with CLI flag values. Only non-empty flag
-// values are applied. Recognised keys: openrouter-api-key, openrouter-model,
-// collection-name, use-local-embeddings, rclone-source,
+// values are applied. Recognised keys: collection-name, rclone-source,
 // rclone-config-dir, data-dir, extensions, directories.
 func (c *Config) MergeFlags(flags map[string]string) {
-	if v, ok := flags["openrouter-api-key"]; ok && v != "" {
-		c.OpenRouterAPIKey = v
-	}
-	if v, ok := flags["openrouter-model"]; ok && v != "" {
-		c.OpenRouterModel = v
-	}
 	if v, ok := flags["collection-name"]; ok && v != "" {
 		c.CollectionName = v
-	}
-	if v, ok := flags["use-local-embeddings"]; ok && v != "" {
-		c.UseLocalEmbeddings = v == "1" || strings.EqualFold(v, "true")
 	}
 	if v, ok := flags["rclone-source"]; ok && v != "" {
 		c.RcloneSource = v
@@ -158,15 +141,7 @@ func (c *Config) MergeFlags(flags map[string]string) {
 // Validate checks the config and returns warnings for missing optional values
 // that fell back to defaults, and errors for invalid or missing required values.
 func (c *Config) Validate() (warnings []string, errs []error) {
-	// Required: API key unless local embeddings are used
-	if c.OpenRouterAPIKey == "" && !c.UseLocalEmbeddings {
-		errs = append(errs, fmt.Errorf("OPENROUTER_API_KEY is required when USE_LOCAL_EMBEDDINGS is not enabled"))
-	}
-
 	// Warnings for values that fell back to defaults
-	if os.Getenv("OPENROUTER_MODEL") == "" {
-		warnings = append(warnings, "OPENROUTER_MODEL not set, using default: openai/text-embedding-3-small")
-	}
 	if os.Getenv("COLLECTION_NAME") == "" {
 		warnings = append(warnings, "COLLECTION_NAME not set, using default: my-notes")
 	}

@@ -28,7 +28,6 @@ scoop install zolam
 ### Prerequisites
 
 - Docker and Docker Compose
-- An `OPENROUTER_API_KEY` (for embeddings), or set `USE_LOCAL_EMBEDDINGS=1` for offline embeddings
 
 Once you have run zolam and ingested files, you can enable its database, ChromaDb, inside Claude (see below).
 
@@ -99,9 +98,6 @@ All directories are ingested into a single collection. Configure via environment
 | Variable | Default | Description |
 |---|---|---|
 | `COLLECTION_NAME` | `my-notes` | ChromaDB collection name |
-| `OPENROUTER_API_KEY` | | API key for OpenRouter embeddings |
-| `OPENROUTER_MODEL` | `openai/text-embedding-3-small` | Embedding model |
-| `USE_LOCAL_EMBEDDINGS` | | Set to `1` for offline sentence-transformers |
 | `RCLONE_REMOTE` | `gdrive` | rclone remote name |
 | `RCLONE_SOURCE` | | Source path on remote |
 | `ZOLAM_DATA_DIR` | `./chromadb-data` | Local ChromaDB data directory |
@@ -114,10 +110,10 @@ Once setup is complete, you can install the MCP server to give Claude access to 
 
 ```bash
 pip install uv
-claude mcp add chroma -- uvx chroma-mcp --client-type persistent --data-dir /path/to/chromadb/data
+claude mcp add chroma -- uvx chroma-mcp --client-type http --host localhost --port 8000
 ```
 
-This gives Claude access to `chroma_query_documents`, `chroma_list_collections`, and other Chroma tools for semantic search.
+This connects to the running ChromaDB container and gives Claude access to `chroma_query_documents`, `chroma_list_collections`, and other Chroma tools for semantic search. Make sure ChromaDB is running (`zolam chromadb start`) before using Claude with the MCP server.
 
 ### Binary Download
 

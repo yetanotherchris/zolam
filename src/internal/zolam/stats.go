@@ -10,7 +10,6 @@ import (
 type Stats struct {
 	CollectionName  string
 	ChromaDBRunning bool
-	EmbeddingType   string // "OpenRouter" or "Local"
 }
 
 // GetStats checks the ChromaDB status and retrieves collection statistics by
@@ -18,12 +17,6 @@ type Stats struct {
 func (i *Ingester) GetStats(outputFn func(string)) (*Stats, error) {
 	stats := &Stats{
 		CollectionName: i.config.CollectionName,
-	}
-
-	if i.config.UseLocalEmbeddings {
-		stats.EmbeddingType = "Local"
-	} else {
-		stats.EmbeddingType = "OpenRouter"
 	}
 
 	outputFn("Querying Docker for ChromaDB status...")

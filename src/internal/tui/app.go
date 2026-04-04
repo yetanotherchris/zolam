@@ -197,18 +197,10 @@ func (m AppModel) settingsView() string {
 	s := TitleStyle.Render("Settings") + "\n\n"
 
 	s += fmt.Sprintf("  Collection Name:     %s\n", m.config.CollectionName)
-	s += fmt.Sprintf("  OpenRouter Model:    %s\n", m.config.OpenRouterModel)
-	s += fmt.Sprintf("  Use Local Embeddings:%v\n", m.config.UseLocalEmbeddings)
 	s += fmt.Sprintf("  Rclone Source:       %s\n", m.config.RcloneSource)
 	s += fmt.Sprintf("  Rclone Config Dir:   %s\n", m.config.RcloneConfigDir)
 	s += fmt.Sprintf("  Data Dir:            %s\n", m.config.DataDir)
 	s += fmt.Sprintf("  Extensions:          %s\n", strings.Join(m.config.Extensions, ", "))
-
-	if m.config.OpenRouterAPIKey != "" {
-		s += fmt.Sprintf("  API Key:             %s\n", "****"+m.config.OpenRouterAPIKey[max(0, len(m.config.OpenRouterAPIKey)-4):])
-	} else {
-		s += "  API Key:             (not set)\n"
-	}
 
 	s += "\n" + HelpStyle.Render("esc/enter/q: back to menu")
 	return s
@@ -311,8 +303,8 @@ func (m AppModel) runStats() tea.Cmd {
 			return OperationDoneMsg{Err: err}
 		}
 
-		summary := fmt.Sprintf("Collection: %s\nChromaDB:   running\nEmbeddings: %s",
-			stats.CollectionName, stats.EmbeddingType)
+		summary := fmt.Sprintf("Collection: %s\nChromaDB:   running",
+			stats.CollectionName)
 		return OperationDoneMsg{Output: summary}
 	}
 }

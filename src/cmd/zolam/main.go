@@ -223,7 +223,7 @@ func newStatsCmd() *cobra.Command {
 				return err
 			}
 
-			stats, err := ing.GetStats(func(line string) {
+			_, err = ing.GetStats(func(line string) {
 				fmt.Println(line)
 			})
 			if err != nil {
@@ -232,7 +232,6 @@ func newStatsCmd() *cobra.Command {
 
 			fmt.Printf("\nCollection: %s\n", cfg.CollectionName)
 			fmt.Printf("ChromaDB:   running\n")
-			fmt.Printf("Embeddings: %s\n", stats.EmbeddingType)
 			return nil
 		},
 	}
@@ -344,15 +343,6 @@ func newConfigCmd() *cobra.Command {
 			fmt.Println("─────────────────────")
 			fmt.Printf("Collection Name:     %s\n", cfg.CollectionName)
 			fmt.Printf("Data Directory:      %s\n", cfg.DataDir)
-			fmt.Printf("Local Embeddings:    %v\n", cfg.UseLocalEmbeddings)
-			if !cfg.UseLocalEmbeddings {
-				fmt.Printf("OpenRouter Model:    %s\n", cfg.OpenRouterModel)
-				if cfg.OpenRouterAPIKey != "" {
-					fmt.Printf("OpenRouter API Key:  %s...%s\n", cfg.OpenRouterAPIKey[:4], cfg.OpenRouterAPIKey[len(cfg.OpenRouterAPIKey)-4:])
-				} else {
-					fmt.Printf("OpenRouter API Key:  (not set)\n")
-				}
-			}
 			fmt.Printf("rclone Source:       %s\n", cfg.RcloneSource)
 			fmt.Printf("rclone Config Dir:   %s\n", cfg.RcloneConfigDir)
 			fmt.Printf("Extensions:          %v\n", cfg.Extensions)

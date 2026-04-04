@@ -3,6 +3,7 @@ ChromaDB Ingestion Script (Docker CLI)
 
 Ingests markdown, PDF, and DOCX files into ChromaDB for semantic search
 via the chroma-mcp server. Connects to ChromaDB over HTTP using HttpClient.
+Uses ChromaDB's default embedding function (all-MiniLM-L6-v2).
 
 Usage (Docker Compose):
     docker compose --profile ingest run --rm \
@@ -21,9 +22,6 @@ Environment variables:
     COLLECTION_NAME      -> ChromaDB collection name (default: my notes)
     CHROMA_HOST          -> ChromaDB server hostname (default: chromadb)
     CHROMA_PORT          -> ChromaDB server port (default: 8000)
-    OPENROUTER_API_KEY   -> API key for OpenRouter embeddings (required unless local)
-    OPENROUTER_MODEL     -> (optional) embedding model, default: openai/text-embedding-3-small
-    USE_LOCAL_EMBEDDINGS -> set to 1 to use local sentence-transformers instead
 """
 
 import argparse
@@ -46,33 +44,6 @@ SUPPORTED_EXTENSIONS = [".md", ".pdf", ".docx", ".txt", ".py", ".cs", ".js", ".t
 
 CHUNK_SIZE = 2000
 CHUNK_OVERLAP = 200
-
-# ---------------------------------------------------------------------------
-# EMBEDDING FUNCTION
-# ---------------------------------------------------------------------------
-
-def get_embedding_function():
-    """Use OpenRouter by default, or local sentence-transformers if USE_LOCAL_EMBEDDINGS is set."""
-    if os.environ.get("USE_LOCAL_EMBEDDINGS"):
-        print("Using local embeddings (all-MiniLM-L6-v2)")
-        return None  # ChromaDB default
-
-    api_key = os.environ.get("OPENROUTER_API_KEY")
-    if not api_key:
-        raise SystemExit(
-            "Error: OPENROUTER_API_KEY is required. "
-            "Set USE_LOCAL_EMBEDDINGS=1 to use local sentence-transformers instead."
-        )
-
-    from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
-    model = os.environ.get("OPENROUTER_MODEL") or "openai/text-embedding-3-small"
-    print(f"Using OpenRouter embeddings: {model}")
-    return OpenAIEmbeddingFunction(
-        api_key=api_key,
-        api_base="https://openrouter.ai/api/v1",
-        model_name=model,
-    )
-
 
 # ---------------------------------------------------------------------------
 # TEXT EXTRACTION
@@ -210,7 +181,6 @@ def main():
     # Sanitize: replace invalid chars with hyphens, strip leading/trailing hyphens
     collection_name = re.sub(r'[^a-zA-Z0-9._-]', '-', collection_name).strip('-')
     client = chromadb.HttpClient(host=CHROMA_HOST, port=CHROMA_PORT)
-    ef = get_embedding_function()
 
     if args.stats:
         try:
@@ -236,10 +206,7 @@ def main():
     extensions = args.extensions if args.extensions else SUPPORTED_EXTENSIONS
     extensions = [ext if ext.startswith(".") else f".{ext}" for ext in extensions]
 
-    kwargs = {"name": collection_name}
-    if ef:
-        kwargs["embedding_function"] = ef
-    collection = client.get_or_create_collection(**kwargs)
+    collection = client.get_or_create_collection(name=collection_name)
 
     total = 0
     for dir_path in args.directory:
