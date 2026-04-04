@@ -158,6 +158,7 @@ func newDownloadCmd() *cobra.Command {
 	var remote string
 	var source string
 	var dest string
+	var configDir string
 
 	cmd := &cobra.Command{
 		Use:   "download",
@@ -178,12 +179,15 @@ func newDownloadCmd() *cobra.Command {
 			if dest == "" {
 				dest = cfg.DataDir
 			}
+			if configDir == "" {
+				configDir = cfg.RcloneConfigDir
+			}
 
 			if source == "" {
 				return fmt.Errorf("rclone source path is required (--source or RCLONE_SOURCE env var)")
 			}
 
-			rcCmd, err := dc.RcloneSync(remote, source, dest)
+			rcCmd, err := dc.RcloneSync(remote, source, dest, configDir)
 			if err != nil {
 				return err
 			}
@@ -195,6 +199,7 @@ func newDownloadCmd() *cobra.Command {
 	cmd.Flags().StringVar(&remote, "remote", "", "rclone remote name (default: gdrive)")
 	cmd.Flags().StringVar(&source, "source", "", "Source path on remote")
 	cmd.Flags().StringVar(&dest, "dest", "", "Local destination directory")
+	cmd.Flags().StringVar(&configDir, "config-dir", "", "rclone config directory (default: ~/.config/rclone)")
 
 	return cmd
 }
