@@ -237,6 +237,14 @@ func (c *Config) AddOrUpdateDirectory(dir string, extensions []string) {
 	})
 }
 
+// RemoveDirectory removes a directory entry by index.
+func (c *Config) RemoveDirectory(index int) {
+	if index < 0 || index >= len(c.Directories) {
+		return
+	}
+	c.Directories = append(c.Directories[:index], c.Directories[index+1:]...)
+}
+
 // Validate checks the config and returns warnings for missing optional values
 // that fell back to defaults, and errors for invalid or missing required values.
 func (c *Config) Validate() (warnings []string, errs []error) {

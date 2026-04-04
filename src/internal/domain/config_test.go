@@ -165,3 +165,28 @@ func TestAddOrUpdateDirectory(t *testing.T) {
 		t.Errorf("expected 2 extensions after update, got %d", len(cfg.Directories[0].Extensions))
 	}
 }
+
+func TestRemoveDirectory(t *testing.T) {
+	cfg := &Config{
+		Directories: []DirectoryEntry{
+			{Path: "/a", Extensions: []string{".md"}},
+			{Path: "/b", Extensions: []string{".txt"}},
+			{Path: "/c", Extensions: []string{".pdf"}},
+		},
+	}
+
+	cfg.RemoveDirectory(1)
+	if len(cfg.Directories) != 2 {
+		t.Fatalf("expected 2 directories, got %d", len(cfg.Directories))
+	}
+	if cfg.Directories[0].Path != "/a" || cfg.Directories[1].Path != "/c" {
+		t.Errorf("unexpected directories after removal: %v", cfg.Directories)
+	}
+
+	// Out of bounds should be a no-op
+	cfg.RemoveDirectory(-1)
+	cfg.RemoveDirectory(5)
+	if len(cfg.Directories) != 2 {
+		t.Errorf("out-of-bounds removal changed directories")
+	}
+}

@@ -28,6 +28,7 @@ type AppModel struct {
 	menu         MenuModel
 	ingest       IngestModel
 	progress     ProgressModel
+	settings     SettingsModel
 	config       *domain.Config
 	dockerClient *docker.DockerClient
 	ingester     *zolam.Ingester
@@ -139,6 +140,7 @@ func (m AppModel) updateMenu(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.runStopChromaDB()
 
 	case 7: // Settings
+		m.settings = NewSettingsModel(m.config)
 		m.state = settingsView
 		return m, nil
 
@@ -162,15 +164,9 @@ func (m AppModel) updateProgress(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m AppModel) updateSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if msg, ok := msg.(tea.KeyMsg); ok {
-		switch msg.String() {
-		case "esc", "enter", "q":
-			m.state = menuView
-			m.menu.chosen = -1
-			return m, nil
-		}
-	}
-	return m, nil
+	var cmd tea.Cmd
+	m.settings, cmd = m.settings.Update(msg)
+	return m, cmd
 }
 
 func (m AppModel) View() string {
@@ -189,28 +185,9 @@ func (m AppModel) View() string {
 	case progressView:
 		return DocStyle.Render(m.progress.View())
 	case settingsView:
-		return DocStyle.Render(m.settingsView())
+		return DocStyle.Render(m.settings.View())
 	}
 	return ""
-}
-
-func (m AppModel) settingsView() string {
-	s := TitleStyle.Render("Settings") + "\n\n"
-
-	s += fmt.Sprintf("  Collection Name:     %s\n", m.config.CollectionName)
-	s += fmt.Sprintf("  Rclone Source:       %s\n", m.config.RcloneSource)
-	s += fmt.Sprintf("  Rclone Config Dir:   %s\n", m.config.RcloneConfigDir)
-	s += fmt.Sprintf("  Data Dir:            %s\n", m.config.DataDir)
-
-	if len(m.config.Directories) > 0 {
-		s += "\n  Ingested directories:\n"
-		for _, d := range m.config.Directories {
-			s += fmt.Sprintf("    %s (%s)\n", d.Path, strings.Join(d.Extensions, ", "))
-		}
-	}
-
-	s += "\n" + HelpStyle.Render("esc/enter/q: back to menu")
-	return s
 }
 
 // --- Commands that run operations in goroutines ---
