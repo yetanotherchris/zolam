@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -342,9 +343,16 @@ func newMcpCmd() *cobra.Command {
 			case "claude":
 				c := exec.Command("claude", "mcp", "add", "--scope", "user", "chroma", "--",
 					"uvx", "chroma-mcp", "--client-type", "http", "--host", "localhost", "--port", "8000", "--ssl", "false")
+				c.Stdin = os.Stdin
 				c.Stdout = os.Stdout
 				c.Stderr = os.Stderr
-				return c.Run()
+				if err := c.Run(); err != nil {
+					if errors.Is(err, exec.ErrNotFound) {
+						return fmt.Errorf("claude CLI is not installed or not on PATH")
+					}
+					return err
+				}
+				return nil
 			default:
 				return fmt.Errorf("unsupported provider %q, supported: claude", provider)
 			}
