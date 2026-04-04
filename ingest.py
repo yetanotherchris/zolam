@@ -220,11 +220,8 @@ def main():
             print(f"No '{collection_name}' collection found.")
         return
 
-    if not args.directory:
-        parser.error("--directory is required (unless using --stats)")
-
-    extensions = args.extensions if args.extensions else SUPPORTED_EXTENSIONS
-    extensions = [ext if ext.startswith(".") else f".{ext}" for ext in extensions]
+    if not args.directory and not args.reset:
+        parser.error("--directory is required (unless using --stats or --reset)")
 
     if args.reset:
         try:
@@ -232,6 +229,12 @@ def main():
             print(f"Deleted existing collection '{collection_name}'.")
         except Exception:
             pass
+        if not args.directory:
+            print("Collection reset complete.")
+            return
+
+    extensions = args.extensions if args.extensions else SUPPORTED_EXTENSIONS
+    extensions = [ext if ext.startswith(".") else f".{ext}" for ext in extensions]
 
     kwargs = {"name": collection_name}
     if ef:

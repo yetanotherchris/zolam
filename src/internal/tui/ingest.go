@@ -17,27 +17,38 @@ type StartIngestMsg struct {
 // BackToMenuMsg is sent when the user wants to return to the main menu.
 type BackToMenuMsg struct{}
 
+// allExtensions is the list of supported extensions available for selection.
+var allExtensions = []string{
+	".md", ".pdf", ".docx", ".txt",
+	".py", ".cs", ".js", ".ts",
+	".json", ".yml", ".yaml",
+}
+
 // IngestModel is the bubbletea model for configuring an ingest run.
 type IngestModel struct {
 	directoryInput textinput.Model
-	extensions     string
-	step           int // 0=enter directory, 1=confirm extensions, 2=ready to run
+	step           int // 0=enter directory, 1=select extensions, 2=confirm
 	directories    []string
+	extSelected    []bool
+	extCursor      int
 	err            error
 }
 
-// NewIngestModel creates a new IngestModel with the given default extensions.
-func NewIngestModel(defaultExtensions string) IngestModel {
+// NewIngestModel creates a new IngestModel with all extensions selected.
+func NewIngestModel() IngestModel {
 	ti := textinput.New()
 	ti.Placeholder = "/path/to/directory"
 	ti.Focus()
 	ti.CharLimit = 256
 	ti.Width = 60
 
+	selected := make([]bool, len(allExtensions))
+	selected[0] = true // .md selected by default
+
 	return IngestModel{
 		directoryInput: ti,
-		extensions:     defaultExtensions,
 		step:           0,
+		extSelected:    selected,
 	}
 }
 
@@ -61,11 +72,13 @@ func (m IngestModel) Update(msg tea.Msg) (IngestModel, tea.Cmd) {
 					m.directoryInput.SetValue("")
 				}
 			case 1:
+				// move to confirm
 				m.step = 2
+			case 2:
 				return m, func() tea.Msg {
 					return StartIngestMsg{
 						Directories: m.directories,
-						Extensions:  m.extensions,
+						Extensions:  m.selectedExtensions(),
 					}
 				}
 			}
@@ -73,6 +86,37 @@ func (m IngestModel) Update(msg tea.Msg) (IngestModel, tea.Cmd) {
 		case "tab":
 			if m.step == 0 && len(m.directories) > 0 {
 				m.step = 1
+			} else if m.step == 1 {
+				m.step = 2
+			}
+
+		case " ":
+			if m.step == 1 {
+				m.extSelected[m.extCursor] = !m.extSelected[m.extCursor]
+			}
+
+		case "a":
+			if m.step == 1 {
+				allSelected := true
+				for _, s := range m.extSelected {
+					if !s {
+						allSelected = false
+						break
+					}
+				}
+				for i := range m.extSelected {
+					m.extSelected[i] = !allSelected
+				}
+			}
+
+		case "up", "k":
+			if m.step == 1 && m.extCursor > 0 {
+				m.extCursor--
+			}
+
+		case "down", "j":
+			if m.step == 1 && m.extCursor < len(allExtensions)-1 {
+				m.extCursor++
 			}
 		}
 	}
@@ -86,6 +130,16 @@ func (m IngestModel) Update(msg tea.Msg) (IngestModel, tea.Cmd) {
 	return m, nil
 }
 
+func (m IngestModel) selectedExtensions() string {
+	var exts []string
+	for i, ext := range allExtensions {
+		if m.extSelected[i] {
+			exts = append(exts, ext)
+		}
+	}
+	return strings.Join(exts, ", ")
+}
+
 func (m IngestModel) View() string {
 	s := TitleStyle.Render("Ingest Configuration") + "\n\n"
 
@@ -95,24 +149,41 @@ func (m IngestModel) View() string {
 		if len(m.directories) > 0 {
 			s += "Added directories:\n"
 			for _, d := range m.directories {
-				s += SuccessStyle.Render(fmt.Sprintf("  ✓ %s", d)) + "\n"
+				s += SuccessStyle.Render(fmt.Sprintf("  + %s", d)) + "\n"
 			}
 			s += "\n"
 		}
 		s += m.directoryInput.View() + "\n"
-		s += "\n" + HelpStyle.Render("enter: add directory • tab: continue • esc: back to menu")
+		s += "\n" + HelpStyle.Render("enter: add directory | tab: continue | esc: back to menu")
 
 	case 1:
-		s += "Directories:\n"
-		for _, d := range m.directories {
-			s += SuccessStyle.Render(fmt.Sprintf("  ✓ %s", d)) + "\n"
+		s += "Select extensions (space to toggle, a to toggle all):\n\n"
+		for i, ext := range allExtensions {
+			cursor := "  "
+			if i == m.extCursor {
+				cursor = "> "
+			}
+			check := "[ ]"
+			if m.extSelected[i] {
+				check = "[x]"
+			}
+			line := fmt.Sprintf("%s%s %s", cursor, check, ext)
+			if i == m.extCursor {
+				s += SelectedMenuItemStyle.Render(line) + "\n"
+			} else {
+				s += line + "\n"
+			}
 		}
-		s += "\n"
-		s += fmt.Sprintf("Extensions: %s\n", m.extensions)
-		s += "\n" + HelpStyle.Render("enter: start ingest • esc: back to menu")
+		s += "\n" + HelpStyle.Render("space: toggle | a: toggle all | tab/enter: continue | esc: back")
 
 	case 2:
-		s += SuccessStyle.Render("Starting ingest...") + "\n"
+		s += "Directories:\n"
+		for _, d := range m.directories {
+			s += SuccessStyle.Render(fmt.Sprintf("  + %s", d)) + "\n"
+		}
+		s += "\n"
+		s += fmt.Sprintf("Extensions: %s\n", m.selectedExtensions())
+		s += "\n" + HelpStyle.Render("enter: start ingest | esc: back to menu")
 	}
 
 	return s

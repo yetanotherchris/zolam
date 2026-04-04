@@ -7,6 +7,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 "github.com/yetanotherchris/zolam/internal/docker"
 	"github.com/yetanotherchris/zolam/internal/domain"
 )
@@ -44,26 +46,93 @@ func NewIngester(dc *docker.DockerClient, cfg *domain.Config) *Ingester {
 
 // runAndStream executes the command and streams its combined stdout/stderr
 // output line-by-line to outputFn.
-func runAndStream(cmd interface{ StdoutPipe() (io.ReadCloser, error); Start() error; Wait() error }, outputFn func(string)) error {
+type streamableCmd interface {
+	StdoutPipe() (io.ReadCloser, error)
+	StderrPipe() (io.ReadCloser, error)
+	Start() error
+	Wait() error
+}
+
+func runAndStream(cmd streamableCmd, outputFn func(string)) error {
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return fmt.Errorf("creating stdout pipe: %w", err)
+	}
+
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("creating stderr pipe: %w", err)
 	}
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("starting command: %w", err)
 	}
 
-	scanner := bufio.NewScanner(stdout)
-	for scanner.Scan() {
-		outputFn(scanner.Text())
+	// Read stdout and stderr concurrently so neither blocks the other.
+	// Split on \n or \r so tqdm progress bars (which use \r) are emitted
+	// as they update rather than buffered into one giant line.
+	var lastLines []string
+	var mu sync.Mutex
+
+	scanLines := func(r io.Reader) {
+		scanner := bufio.NewScanner(r)
+		scanner.Split(splitOnNewlineOrCR)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if line == "" {
+				continue
+			}
+			mu.Lock()
+			outputFn(line)
+			lastLines = append(lastLines, line)
+			if len(lastLines) > 20 {
+				lastLines = lastLines[1:]
+			}
+			mu.Unlock()
+		}
 	}
 
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() { defer wg.Done(); scanLines(stdout) }()
+	go func() { defer wg.Done(); scanLines(stderr) }()
+	wg.Wait()
+
 	if err := cmd.Wait(); err != nil {
+		mu.Lock()
+		detail := strings.Join(lastLines, "\n")
+		mu.Unlock()
+		if detail != "" {
+			return fmt.Errorf("command failed: %w\nOutput:\n%s", err, detail)
+		}
 		return fmt.Errorf("command failed: %w", err)
 	}
 
 	return nil
+}
+
+// splitOnNewlineOrCR is a bufio.SplitFunc that splits on \n, \r\n, or \r.
+// This allows tqdm-style progress bars (which use \r) to be streamed.
+func splitOnNewlineOrCR(data []byte, atEOF bool) (advance int, token []byte, err error) {
+	if atEOF && len(data) == 0 {
+		return 0, nil, nil
+	}
+	for i, b := range data {
+		if b == '\n' {
+			return i + 1, data[:i], nil
+		}
+		if b == '\r' {
+			// \r\n counts as one line ending
+			if i+1 < len(data) && data[i+1] == '\n' {
+				return i + 2, data[:i], nil
+			}
+			return i + 1, data[:i], nil
+		}
+	}
+	if atEOF {
+		return len(data), data, nil
+	}
+	return 0, nil, nil
 }
 
 // Run executes a full ingest for the given directories.
@@ -115,7 +184,6 @@ func (i *Ingester) Run(directories []string, opts IngestOptions, outputFn func(s
 		return fmt.Errorf("creating ingest command: %w", err)
 	}
 
-	cmd.Stderr = cmd.Stdout // merge stderr into stdout pipe
 	return runAndStream(cmd, outputFn)
 }
 
