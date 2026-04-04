@@ -110,7 +110,7 @@ Once setup is complete, you can install the MCP server to give Claude access to 
 
 ```bash
 pip install uv
-claude mcp add chroma -- uvx chroma-mcp --client-type http --host localhost --port 8000 --ssl false
+claude mcp add --scope user chroma -- uvx chroma-mcp --client-type http --host localhost --port 8000 --ssl false
 ```
 
 This connects to the running ChromaDB container and gives Claude access to `chroma_query_documents`, `chroma_list_collections`, and other Chroma tools for semantic search. Make sure ChromaDB is running (`zolam chromadb start`) before using Claude with the MCP server.
