@@ -75,7 +75,7 @@ func (c *DockerClient) composeCmd(args ...string) *exec.Cmd {
 }
 
 func (c *DockerClient) ComposeUp(services ...string) error {
-	args := []string{"up", "-d"}
+	args := []string{"up", "-d", "--pull", "always"}
 	args = append(args, services...)
 	cmd := c.composeCmd(args...)
 	cmd.Stdout = os.Stdout
