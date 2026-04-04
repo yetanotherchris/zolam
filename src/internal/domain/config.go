@@ -140,7 +140,7 @@ func (c *Config) MergeFlags(flags map[string]string) {
 		c.RcloneSource = v
 	}
 	if v, ok := flags["rclone-config-dir"]; ok && v != "" {
-		c.RcloneConfigDir = v
+		c.RcloneConfigDir = filepath.ToSlash(v)
 	}
 	if v, ok := flags["data-dir"]; ok && v != "" {
 		c.DataDir = v

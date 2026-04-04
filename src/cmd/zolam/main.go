@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -181,6 +182,8 @@ func newDownloadCmd() *cobra.Command {
 			}
 			if configDir == "" {
 				configDir = cfg.RcloneConfigDir
+			} else {
+				configDir = filepath.ToSlash(configDir)
 			}
 
 			if source == "" {
@@ -357,6 +360,7 @@ func newConfigCmd() *cobra.Command {
 			}
 			fmt.Printf("rclone Remote:       %s\n", cfg.RcloneRemote)
 			fmt.Printf("rclone Source:       %s\n", cfg.RcloneSource)
+			fmt.Printf("rclone Config Dir:   %s\n", cfg.RcloneConfigDir)
 			fmt.Printf("Extensions:          %v\n", cfg.Extensions)
 
 			if len(warnings) > 0 {

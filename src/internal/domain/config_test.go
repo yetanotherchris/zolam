@@ -128,14 +128,16 @@ func TestValidate_LocalEmbeddings(t *testing.T) {
 
 func TestMergeFlags(t *testing.T) {
 	cfg := &Config{
-		CollectionName: "original",
-		DataDir:        "/original/path",
+		CollectionName:  "original",
+		DataDir:         "/original/path",
 		OpenRouterModel: "original-model",
+		RcloneConfigDir: "/original/rclone",
 	}
 
 	flags := map[string]string{
-		"collection-name": "overridden-collection",
-		"data-dir":        "/new/path",
+		"collection-name":  "overridden-collection",
+		"data-dir":         "/new/path",
+		"rclone-config-dir": "/new/rclone/config",
 	}
 
 	cfg.MergeFlags(flags)
@@ -145,6 +147,9 @@ func TestMergeFlags(t *testing.T) {
 	}
 	if cfg.DataDir != "/new/path" {
 		t.Errorf("DataDir = %q, want %q", cfg.DataDir, "/new/path")
+	}
+	if cfg.RcloneConfigDir != "/new/rclone/config" {
+		t.Errorf("RcloneConfigDir = %q, want %q", cfg.RcloneConfigDir, "/new/rclone/config")
 	}
 	// Verify unset flags don't change existing values.
 	if cfg.OpenRouterModel != "original-model" {
