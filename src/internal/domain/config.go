@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -12,8 +13,8 @@ type Config struct {
 	OpenRouterModel    string
 	CollectionName     string
 	UseLocalEmbeddings bool
-	RcloneRemote       string
 	RcloneSource       string
+	RcloneConfigDir    string
 	DataDir            string
 	Extensions         []string
 	Directories        []string
@@ -72,6 +73,22 @@ func getEnvOrDefault(key, defaultVal string) string {
 // LoadConfig loads configuration from a .env file (if present in the current
 // directory) and environment variables. It returns the config, any validation
 // warnings, and the first validation error (if any).
+func defaultDataDir() string {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "./chromadb-data"
+	}
+	return filepath.ToSlash(filepath.Join(homeDir, ".zolam", "chromadb-data"))
+}
+
+func defaultRcloneConfigDir() string {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return ".config/rclone"
+	}
+	return filepath.ToSlash(filepath.Join(homeDir, ".config", "rclone"))
+}
+
 func LoadConfig() (*Config, []string, error) {
 	loadEnvFile(".env")
 
@@ -80,9 +97,9 @@ func LoadConfig() (*Config, []string, error) {
 		OpenRouterModel:    getEnvOrDefault("OPENROUTER_MODEL", "openai/text-embedding-3-small"),
 		CollectionName:     getEnvOrDefault("COLLECTION_NAME", "my-notes"),
 		UseLocalEmbeddings: os.Getenv("USE_LOCAL_EMBEDDINGS") == "1",
-		RcloneRemote:       getEnvOrDefault("RCLONE_REMOTE", "gdrive"),
 		RcloneSource:       os.Getenv("RCLONE_SOURCE"),
-		DataDir:            getEnvOrDefault("ZOLAM_DATA_DIR", "./chromadb-data"),
+		RcloneConfigDir:    getEnvOrDefault("RCLONE_CONFIG_DIR", defaultRcloneConfigDir()),
+		DataDir:            getEnvOrDefault("ZOLAM_DATA_DIR", defaultDataDir()),
 		Extensions:         append([]string{}, defaultExtensions...),
 	}
 
@@ -92,13 +109,15 @@ func LoadConfig() (*Config, []string, error) {
 		firstErr = errs[0]
 	}
 
+	os.Setenv("ZOLAM_DATA_DIR", cfg.DataDir)
+
 	return cfg, warnings, firstErr
 }
 
 // MergeFlags overrides config values with CLI flag values. Only non-empty flag
 // values are applied. Recognised keys: openrouter-api-key, openrouter-model,
-// collection-name, use-local-embeddings, rclone-remote, rclone-source,
-// data-dir, extensions, directories.
+// collection-name, use-local-embeddings, rclone-source,
+// rclone-config-dir, data-dir, extensions, directories.
 func (c *Config) MergeFlags(flags map[string]string) {
 	if v, ok := flags["openrouter-api-key"]; ok && v != "" {
 		c.OpenRouterAPIKey = v
@@ -112,14 +131,15 @@ func (c *Config) MergeFlags(flags map[string]string) {
 	if v, ok := flags["use-local-embeddings"]; ok && v != "" {
 		c.UseLocalEmbeddings = v == "1" || strings.EqualFold(v, "true")
 	}
-	if v, ok := flags["rclone-remote"]; ok && v != "" {
-		c.RcloneRemote = v
-	}
 	if v, ok := flags["rclone-source"]; ok && v != "" {
 		c.RcloneSource = v
 	}
+	if v, ok := flags["rclone-config-dir"]; ok && v != "" {
+		c.RcloneConfigDir = filepath.ToSlash(v)
+	}
 	if v, ok := flags["data-dir"]; ok && v != "" {
 		c.DataDir = v
+		os.Setenv("ZOLAM_DATA_DIR", v)
 	}
 	if v, ok := flags["extensions"]; ok && v != "" {
 		c.Extensions = strings.Split(v, ",")
@@ -150,11 +170,11 @@ func (c *Config) Validate() (warnings []string, errs []error) {
 	if os.Getenv("COLLECTION_NAME") == "" {
 		warnings = append(warnings, "COLLECTION_NAME not set, using default: my-notes")
 	}
-	if os.Getenv("RCLONE_REMOTE") == "" {
-		warnings = append(warnings, "RCLONE_REMOTE not set, using default: gdrive")
+	if os.Getenv("RCLONE_CONFIG_DIR") == "" {
+		warnings = append(warnings, "RCLONE_CONFIG_DIR not set, using default: "+defaultRcloneConfigDir())
 	}
 	if os.Getenv("ZOLAM_DATA_DIR") == "" {
-		warnings = append(warnings, "ZOLAM_DATA_DIR not set, using default: ./chromadb-data")
+		warnings = append(warnings, "ZOLAM_DATA_DIR not set, using default: "+defaultDataDir())
 	}
 
 	return warnings, errs

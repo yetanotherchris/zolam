@@ -199,8 +199,8 @@ func (m AppModel) settingsView() string {
 	s += fmt.Sprintf("  Collection Name:     %s\n", m.config.CollectionName)
 	s += fmt.Sprintf("  OpenRouter Model:    %s\n", m.config.OpenRouterModel)
 	s += fmt.Sprintf("  Use Local Embeddings:%v\n", m.config.UseLocalEmbeddings)
-	s += fmt.Sprintf("  Rclone Remote:       %s\n", m.config.RcloneRemote)
 	s += fmt.Sprintf("  Rclone Source:       %s\n", m.config.RcloneSource)
+	s += fmt.Sprintf("  Rclone Config Dir:   %s\n", m.config.RcloneConfigDir)
 	s += fmt.Sprintf("  Data Dir:            %s\n", m.config.DataDir)
 	s += fmt.Sprintf("  Extensions:          %s\n", strings.Join(m.config.Extensions, ", "))
 
@@ -273,7 +273,7 @@ func (m AppModel) runUpdateOnly() tea.Cmd {
 
 func (m AppModel) runRclone() tea.Cmd {
 	return func() tea.Msg {
-		cmd, err := m.dockerClient.RcloneSync(m.config.RcloneRemote, m.config.RcloneSource, m.config.DataDir)
+		cmd, err := m.dockerClient.RcloneCopy(m.config.RcloneSource, m.config.DataDir, m.config.RcloneConfigDir)
 		if err != nil {
 			return OperationDoneMsg{Err: err}
 		}

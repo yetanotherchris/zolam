@@ -1,6 +1,8 @@
 package domain
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -8,8 +10,8 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	// Clear all relevant env vars so defaults are used.
 	for _, key := range []string{
 		"OPENROUTER_API_KEY", "OPENROUTER_MODEL", "COLLECTION_NAME",
-		"USE_LOCAL_EMBEDDINGS", "RCLONE_REMOTE", "RCLONE_SOURCE",
-		"ZOLAM_DATA_DIR",
+		"USE_LOCAL_EMBEDDINGS", "RCLONE_SOURCE",
+		"RCLONE_CONFIG_DIR", "ZOLAM_DATA_DIR",
 	} {
 		t.Setenv(key, "")
 	}
@@ -27,11 +29,17 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	if cfg.OpenRouterModel != "openai/text-embedding-3-small" {
 		t.Errorf("OpenRouterModel = %q, want %q", cfg.OpenRouterModel, "openai/text-embedding-3-small")
 	}
-	if cfg.DataDir != "./chromadb-data" {
-		t.Errorf("DataDir = %q, want %q", cfg.DataDir, "./chromadb-data")
+	homeDir, _ := os.UserHomeDir()
+	expectedDataDir := filepath.ToSlash(filepath.Join(homeDir, ".zolam", "chromadb-data"))
+	if cfg.DataDir != expectedDataDir {
+		t.Errorf("DataDir = %q, want %q", cfg.DataDir, expectedDataDir)
 	}
-	if cfg.RcloneRemote != "gdrive" {
-		t.Errorf("RcloneRemote = %q, want %q", cfg.RcloneRemote, "gdrive")
+	if envVal := os.Getenv("ZOLAM_DATA_DIR"); envVal != expectedDataDir {
+		t.Errorf("ZOLAM_DATA_DIR env = %q, want %q", envVal, expectedDataDir)
+	}
+	expectedRcloneConfigDir := filepath.ToSlash(filepath.Join(homeDir, ".config", "rclone"))
+	if cfg.RcloneConfigDir != expectedRcloneConfigDir {
+		t.Errorf("RcloneConfigDir = %q, want %q", cfg.RcloneConfigDir, expectedRcloneConfigDir)
 	}
 
 	expectedExts := []string{
@@ -55,8 +63,8 @@ func TestLoadConfig_EnvVars(t *testing.T) {
 	t.Setenv("USE_LOCAL_EMBEDDINGS", "1")
 	// Clear others to avoid stale state.
 	t.Setenv("OPENROUTER_MODEL", "")
-	t.Setenv("RCLONE_REMOTE", "")
 	t.Setenv("RCLONE_SOURCE", "")
+	t.Setenv("RCLONE_CONFIG_DIR", "")
 	t.Setenv("ZOLAM_DATA_DIR", "")
 
 	cfg, _, err := LoadConfig()
@@ -80,7 +88,7 @@ func TestValidate_MissingAPIKey(t *testing.T) {
 	t.Setenv("OPENROUTER_API_KEY", "")
 	t.Setenv("OPENROUTER_MODEL", "some-model")
 	t.Setenv("COLLECTION_NAME", "some-collection")
-	t.Setenv("RCLONE_REMOTE", "some-remote")
+	t.Setenv("RCLONE_CONFIG_DIR", "some-dir")
 	t.Setenv("ZOLAM_DATA_DIR", "some-dir")
 
 	cfg := &Config{
@@ -98,7 +106,7 @@ func TestValidate_LocalEmbeddings(t *testing.T) {
 	t.Setenv("OPENROUTER_API_KEY", "")
 	t.Setenv("OPENROUTER_MODEL", "some-model")
 	t.Setenv("COLLECTION_NAME", "some-collection")
-	t.Setenv("RCLONE_REMOTE", "some-remote")
+	t.Setenv("RCLONE_CONFIG_DIR", "some-dir")
 	t.Setenv("ZOLAM_DATA_DIR", "some-dir")
 
 	cfg := &Config{
@@ -114,14 +122,16 @@ func TestValidate_LocalEmbeddings(t *testing.T) {
 
 func TestMergeFlags(t *testing.T) {
 	cfg := &Config{
-		CollectionName: "original",
-		DataDir:        "/original/path",
+		CollectionName:  "original",
+		DataDir:         "/original/path",
 		OpenRouterModel: "original-model",
+		RcloneConfigDir: "/original/rclone",
 	}
 
 	flags := map[string]string{
-		"collection-name": "overridden-collection",
-		"data-dir":        "/new/path",
+		"collection-name":  "overridden-collection",
+		"data-dir":         "/new/path",
+		"rclone-config-dir": "/new/rclone/config",
 	}
 
 	cfg.MergeFlags(flags)
@@ -131,6 +141,9 @@ func TestMergeFlags(t *testing.T) {
 	}
 	if cfg.DataDir != "/new/path" {
 		t.Errorf("DataDir = %q, want %q", cfg.DataDir, "/new/path")
+	}
+	if cfg.RcloneConfigDir != "/new/rclone/config" {
+		t.Errorf("RcloneConfigDir = %q, want %q", cfg.RcloneConfigDir, "/new/rclone/config")
 	}
 	// Verify unset flags don't change existing values.
 	if cfg.OpenRouterModel != "original-model" {
