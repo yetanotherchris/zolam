@@ -163,10 +163,8 @@ func (i *Ingester) Run(directories []string, opts IngestOptions, outputFn func(s
 	}
 
 	var containerArgs []string
-	if len(containerDirs) > 0 {
-		containerArgs = append(containerArgs, "--directory")
-		containerArgs = append(containerArgs, containerDirs...)
-	}
+	containerArgs = append(containerArgs, "--directory")
+	containerArgs = append(containerArgs, containerDirs...)
 
 	if len(opts.Extensions) > 0 {
 		containerArgs = append(containerArgs, "--extensions")
