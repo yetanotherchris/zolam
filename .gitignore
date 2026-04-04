@@ -211,3 +211,4 @@ chromadb-data/
 src/zolam
 src/*.exe
 .claude/settings.local.json
+src/.claude/settings.local.json

@@ -2,10 +2,7 @@
 ChromaDB Ingestion Script (Docker CLI)
 
 Ingests markdown, PDF, and DOCX files into ChromaDB for semantic search
-via the chroma-mcp server.
-
-Default: uses OpenRouter for embeddings (requires OPENROUTER_API_KEY).
-Optional: set USE_LOCAL_EMBEDDINGS=1 for offline sentence-transformers.
+via the chroma-mcp server. Connects to ChromaDB over HTTP using HttpClient.
 
 Usage (Docker Compose):
     docker compose --profile ingest run --rm \
@@ -22,6 +19,8 @@ Usage (Docker Compose):
 
 Environment variables:
     COLLECTION_NAME      -> ChromaDB collection name (default: my notes)
+    CHROMA_HOST          -> ChromaDB server hostname (default: chromadb)
+    CHROMA_PORT          -> ChromaDB server port (default: 8000)
     OPENROUTER_API_KEY   -> API key for OpenRouter embeddings (required unless local)
     OPENROUTER_MODEL     -> (optional) embedding model, default: openai/text-embedding-3-small
     USE_LOCAL_EMBEDDINGS -> set to 1 to use local sentence-transformers instead
@@ -40,7 +39,8 @@ from tqdm import tqdm
 # CONFIG
 # ---------------------------------------------------------------------------
 
-CHROMA_DATA_DIR = "/data"
+CHROMA_HOST = os.environ.get("CHROMA_HOST", "chromadb")
+CHROMA_PORT = int(os.environ.get("CHROMA_PORT", "8000"))
 
 SUPPORTED_EXTENSIONS = [".md", ".pdf", ".docx", ".txt", ".py", ".cs", ".js", ".ts", ".json", ".yml", ".yaml"]
 
@@ -209,7 +209,7 @@ def main():
     collection_name = os.environ.get("COLLECTION_NAME", "my-notes")
     # Sanitize: replace invalid chars with hyphens, strip leading/trailing hyphens
     collection_name = re.sub(r'[^a-zA-Z0-9._-]', '-', collection_name).strip('-')
-    client = chromadb.PersistentClient(path=CHROMA_DATA_DIR)
+    client = chromadb.HttpClient(host=CHROMA_HOST, port=CHROMA_PORT)
     ef = get_embedding_function()
 
     if args.stats:

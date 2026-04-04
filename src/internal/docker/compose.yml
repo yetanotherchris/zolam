@@ -11,10 +11,10 @@ services:
 
   ingest:
     image: ghcr.io/yetanotherchris/zolam:latest
-    volumes:
-      - ${ZOLAM_DATA_DIR:-./chromadb-data}:/data
     environment:
       - COLLECTION_NAME=${COLLECTION_NAME:-my-notes}
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
       - OPENROUTER_MODEL=${OPENROUTER_MODEL:-openai/text-embedding-3-small}
       - USE_LOCAL_EMBEDDINGS=${USE_LOCAL_EMBEDDINGS:-}
