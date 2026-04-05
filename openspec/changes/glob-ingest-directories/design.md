@@ -23,11 +23,15 @@ Go's `filepath.Glob` does not support `**`. The `github.com/bmatcuk/doublestar/v
 
 Alternative considered: custom recursive walk with `filepath.Match` per segment. Rejected because it reimplements what doublestar already handles correctly, including edge cases around symlinks and path separators on Windows.
 
-### Resolve globs in a new function, not inline in Ingester
+### Resolve globs in a new function in the `zolam` package
 
-A `ResolveDirectories(entries []DirectoryEntry) []DirectoryEntry` function in the `domain` or `zolam` package takes the configured entries and returns expanded entries. Literal paths pass through unchanged. Glob patterns expand to one entry per matched directory, each inheriting the extensions from the original pattern entry.
+A `ResolveDirectories(entries []DirectoryEntry, warnFn func(string)) []DirectoryEntry` function in the `zolam` package takes the configured entries and returns expanded entries. Literal paths pass through unchanged. Glob patterns expand to one entry per matched directory, each inheriting the extensions from the original pattern entry. The `warnFn` callback is used to report zero-match patterns.
 
-This keeps the Ingester unchanged - it still receives concrete directory lists.
+All resolved paths are normalized with `filepath.ToSlash` and deduplicated. When overlapping patterns or a pattern-plus-literal resolve to the same directory, the first occurrence wins (preserving its extensions).
+
+This function is called:
+- In `Ingester.Run` and `Ingester.RunUpdateOnly` before iterating directories
+- In the CLI `ingest` and `update` commands when directories come from CLI args
 
 ### Detect glob vs literal by checking for glob meta-characters
 
@@ -38,6 +42,20 @@ Alternative considered: adding an `IsGlob bool` field to `DirectoryEntry`. Rejec
 ### Glob resolution happens at ingest time, not config save time
 
 Patterns are stored as-is in `config.json`. Resolution happens when `Run` or `RunUpdateOnly` is called. This means the set of matched directories can change between runs as the filesystem changes, which is the expected behavior.
+
+### Handle Docker volume mount name collisions
+
+`Ingester.Run` currently uses `filepath.Base(absPath)` as the container mount point, e.g. `/sources/Draft`. When a glob resolves to multiple directories with the same base name (e.g. `2024/Draft` and `2025/Draft`), these would collide.
+
+Fix: use a unique mount suffix when collisions are detected. For example `/sources/Draft`, `/sources/Draft_1`, etc. The container directory list passed to `ingest.py` uses the unique mount names.
+
+### Pass resolved extensions through the ingest pipeline
+
+`RunUpdateOnly` currently looks up per-directory extensions by matching `d.Path` against config entries. After glob resolution, the resolved paths won't match the stored pattern. Fix: `ResolveDirectories` produces `DirectoryEntry` values with the resolved path and inherited extensions. `RunUpdateOnly` should use the resolved entries directly for extension lookup rather than matching back against the config.
+
+### Normalize trailing slashes and path separators
+
+`ResolveDirectories` strips trailing slashes and applies `filepath.ToSlash` to all resolved paths before deduplication and before returning. This keeps behavior consistent with existing config path handling.
 
 ## Risks / Trade-offs
 

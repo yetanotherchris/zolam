@@ -45,3 +45,34 @@ Glob resolution SHALL only return paths that are directories. Files matching the
 #### Scenario: File matches pattern but is excluded
 - **WHEN** a glob pattern `c:/notes/D*` matches both a directory `c:/notes/Docs` and a file `c:/notes/Data.txt`
 - **THEN** only `c:/notes/Docs` is included in the resolved list
+
+### Requirement: Duplicate directories are deduplicated
+When multiple patterns (or a pattern and a literal path) resolve to the same directory, the system SHALL include it only once. The first occurrence wins, preserving its extensions.
+
+#### Scenario: Overlapping glob and literal path
+- **WHEN** config has a literal entry `c:/notes/2024/Draft` with extensions `[".md"]`
+- **AND** config has a glob entry `c:/notes/*/Draft` with extensions `[".txt"]`
+- **THEN** the resolved list contains `c:/notes/2024/Draft` only once, with extensions `[".md"]` (from the first entry)
+
+#### Scenario: Two globs resolve to same directory
+- **WHEN** config has `c:/notes/*/Draft` and `c:/notes/2024/*`
+- **AND** both resolve to include `c:/notes/2024/Draft`
+- **THEN** the resolved list contains `c:/notes/2024/Draft` only once
+
+### Requirement: Paths are normalized before comparison
+All resolved paths SHALL have trailing slashes stripped and use forward slashes (`/`) before deduplication and before being passed to the ingest pipeline. This is consistent with existing `filepath.ToSlash` usage in the codebase.
+
+#### Scenario: Trailing slash stripped
+- **WHEN** a glob pattern `c:/notes/*/Draft/` resolves to `c:/notes/2024/Draft/`
+- **THEN** the resolved path is `c:/notes/2024/Draft` (no trailing slash)
+
+#### Scenario: Backslashes normalized
+- **WHEN** a glob resolves to `c:\notes\2024\Draft`
+- **THEN** the resolved path is `c:/notes/2024/Draft`
+
+### Requirement: Docker volume mount names are unique
+When multiple resolved directories have the same base name, the system SHALL generate unique container mount points to avoid Docker volume collisions.
+
+#### Scenario: Two directories with same base name
+- **WHEN** a glob resolves to `c:/notes/2024/Draft` and `c:/notes/2025/Draft`
+- **THEN** the container mount points are distinct (e.g. `/sources/Draft` and `/sources/Draft_1`)
