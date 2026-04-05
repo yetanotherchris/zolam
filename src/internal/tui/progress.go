@@ -18,6 +18,9 @@ type OperationDoneMsg struct {
 	Output string
 }
 
+// CancelOperationMsg signals the user wants to cancel the running operation.
+type CancelOperationMsg struct{}
+
 // ProgressModel displays streaming output from a long-running operation.
 type ProgressModel struct {
 	viewport viewport.Model
@@ -82,6 +85,9 @@ func (m ProgressModel) Update(msg tea.Msg) (ProgressModel, tea.Cmd) {
 	case tea.KeyMsg:
 		if m.done {
 			return m, func() tea.Msg { return BackToMenuMsg{} }
+		}
+		if msg.String() == "ctrl+c" || msg.String() == "esc" {
+			return m, func() tea.Msg { return CancelOperationMsg{} }
 		}
 	}
 

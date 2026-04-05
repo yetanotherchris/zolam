@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/term"
+
 	"github.com/spf13/cobra"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yetanotherchris/zolam/internal/docker"
@@ -216,7 +218,18 @@ func newDownloadCmd() *cobra.Command {
 				return fmt.Errorf("RCLONE_SOURCE is required (--source flag or RCLONE_SOURCE env var)")
 			}
 
-			rcCmd, err := dc.RcloneCopy(source, dest, configDir)
+			configPass := os.Getenv("RCLONE_CONFIG_PASS")
+			if configPass == "" {
+				fmt.Fprint(os.Stderr, "Rclone config password: ")
+				passBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
+				fmt.Fprintln(os.Stderr)
+				if err != nil {
+					return fmt.Errorf("failed to read password: %w", err)
+				}
+				configPass = string(passBytes)
+			}
+
+			rcCmd, err := dc.RcloneCopy(source, dest, configDir, configPass)
 			if err != nil {
 				return err
 			}
