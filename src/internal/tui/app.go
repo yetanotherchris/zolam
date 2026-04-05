@@ -1,7 +1,7 @@
 package tui
 
 import (
-	"bytes"
+	"bufio"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -288,10 +288,26 @@ func (m AppModel) runRclone(configPass string) tea.Cmd {
 			return OperationDoneMsg{Err: err}
 		}
 
-		var buf bytes.Buffer
-		err = m.dockerClient.StreamOutput(cmd, &buf)
+		stdout, err := cmd.StdoutPipe()
 		if err != nil {
-			return OperationDoneMsg{Err: fmt.Errorf("%w: %s", err, buf.String())}
+			return OperationDoneMsg{Err: fmt.Errorf("stdout pipe: %w", err)}
+		}
+		cmd.Stderr = cmd.Stdout
+
+		if err := cmd.Start(); err != nil {
+			return OperationDoneMsg{Err: err}
+		}
+
+		p := m.sender.Program
+		scanner := bufio.NewScanner(stdout)
+		for scanner.Scan() {
+			if p != nil {
+				p.Send(OutputLineMsg{Line: scanner.Text()})
+			}
+		}
+
+		if err := cmd.Wait(); err != nil {
+			return OperationDoneMsg{Err: err}
 		}
 		return OperationDoneMsg{}
 	}
