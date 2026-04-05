@@ -52,12 +52,17 @@ func NewDockerClient() (*DockerClient, error) {
 	}
 
 	composePath := filepath.Join(zolamDir, "compose.yml")
-	if _, err := os.Stat(composePath); os.IsNotExist(err) {
-		data, err := composeFS.ReadFile("compose.yml")
-		if err != nil {
-			return nil, fmt.Errorf("failed to read embedded compose.yml: %w", err)
-		}
+	data, err := composeFS.ReadFile("compose.yml")
+	if err != nil {
+		return nil, fmt.Errorf("failed to read embedded compose.yml: %w", err)
+	}
 
+	existing, readErr := os.ReadFile(composePath)
+	if readErr != nil || string(existing) != string(data) {
+		if readErr == nil {
+			backupPath := composePath + ".bak"
+			os.Rename(composePath, backupPath)
+		}
 		if err := os.WriteFile(composePath, data, 0644); err != nil {
 			return nil, fmt.Errorf("failed to write compose.yml: %w", err)
 		}
