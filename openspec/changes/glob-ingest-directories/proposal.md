@@ -6,7 +6,9 @@ Ingest directories in `config.json` only accept literal paths. Users with files 
 
 - `DirectoryEntry.Path` in config accepts glob patterns (e.g. `c:/myfolder/**/D*/`) in addition to literal paths
 - A new glob-resolution step runs before ingest, expanding patterns into concrete directories
-- The rest of the pipeline (volume mounts, hashing, Docker ingest) continues to receive resolved literal paths
+- File discovery moves to Go: globs resolve to directories, directories are walked with extension filtering, and individual file paths are passed to the Python container
+- `ingest.py` gains `--manifest` (JSON file of paths) and `--file-path` (CLI args) as new input modes; existing `--directory` is preserved for backward compatibility
+- A single Docker volume mount of the common parent directory replaces per-directory mounts, eliminating mount collision issues
 - Invalid or zero-match patterns produce clear warnings rather than silent failures
 - The TUI directory-add flow accepts glob patterns
 
@@ -19,8 +21,9 @@ Ingest directories in `config.json` only accept literal paths. Users with files 
 
 ## Impact
 
-- `internal/domain/config.go` - `DirectoryEntry` may need a flag or detection for glob vs literal paths
-- `internal/zolam/ingester.go` - `Run` and `RunUpdateOnly` need a resolution step before iterating directories
-- `internal/tui/ingest.go` - TUI ingest flow needs to handle patterns that resolve to multiple directories
-- Go stdlib `filepath.Glob` handles simple patterns but not `**` (recursive); will need `doublestar` library or custom implementation
+- `internal/zolam/ingester.go` - `Run` and `RunUpdateOnly` gain glob resolution and file discovery steps
+- `ingest.py` - new `--manifest` and `--file-path` arguments
+- `internal/tui/ingest.go` - TUI directory-add accepts glob patterns
+- New Go dependency: `github.com/bmatcuk/doublestar/v4` for `**` glob support
 - No breaking changes to config.json format - existing literal paths continue to work unchanged
+- `ingest.py` `--directory` flag preserved for backward compatibility

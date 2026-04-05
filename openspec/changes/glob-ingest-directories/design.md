@@ -2,6 +2,8 @@
 
 Zolam's ingest pipeline accepts a list of directory paths from `config.json`. Each `DirectoryEntry.Path` is a literal filesystem path. Users with structured file trees (e.g. year/topic folders) must manually add each directory. Go's `filepath.Glob` does not support `**` for recursive matching.
 
+Currently the responsibility for file discovery is split: Go picks directories, then `ingest.py` walks them to find files. This change consolidates file discovery in Go and changes `ingest.py` to accept individual file paths.
+
 ## Goals / Non-Goals
 
 **Goals:**
@@ -9,9 +11,10 @@ Zolam's ingest pipeline accepts a list of directory paths from `config.json`. Ea
 - Support `**` for recursive directory matching (e.g. `c:/notes/**/Draft/`)
 - Existing literal paths continue to work without changes
 - Clear feedback when a pattern matches zero directories
+- Move file discovery responsibility to Go, pass resolved file paths to the Python container
 
 **Non-Goals:**
-- File-level glob patterns (globs target directories, not individual files)
+- File-level glob patterns in config (globs target directories, not individual files)
 - Pattern validation in the config save path - patterns are resolved at ingest time only
 - Watching for new directories that match patterns after ingest starts
 
@@ -37,17 +40,41 @@ This function is called:
 
 If a path contains `*`, `?`, `[`, or `{` it is treated as a glob pattern. Otherwise it is a literal path. No new config field needed.
 
-Alternative considered: adding an `IsGlob bool` field to `DirectoryEntry`. Rejected because it adds config complexity for no benefit - the presence of glob characters is unambiguous.
-
 ### Glob resolution happens at ingest time, not config save time
 
 Patterns are stored as-is in `config.json`. Resolution happens when `Run` or `RunUpdateOnly` is called. This means the set of matched directories can change between runs as the filesystem changes, which is the expected behavior.
 
-### Handle Docker volume mount name collisions
+### Go does file discovery, Python processes individual files
 
-`Ingester.Run` currently uses `filepath.Base(absPath)` as the container mount point, e.g. `/sources/Draft`. When a glob resolves to multiple directories with the same base name (e.g. `2024/Draft` and `2025/Draft`), these would collide.
+Currently `ingest.py` takes `--directory` args and walks each directory to find files. This mixes file discovery (which depends on glob resolution, extension filtering) with file processing (text extraction, chunking, embedding).
 
-Fix: use a unique mount suffix when collisions are detected. For example `/sources/Draft`, `/sources/Draft_1`, etc. The container directory list passed to `ingest.py` uses the unique mount names.
+New approach: Go resolves globs to directories, walks them with extension filtering, and produces a list of absolute file paths. These are passed to the Python container which processes them without needing to do any directory traversal.
+
+This eliminates the Docker volume mount collision problem entirely. Instead of mounting each resolved directory separately, Go mounts the common parent directory once and passes file paths relative to that mount.
+
+### File path passing: manifest file and `--file-path` flag
+
+`ingest.py` gains two ways to receive file paths:
+
+1. **`--manifest <path>`** - a JSON file containing a list of file paths. Go writes this file, mounts it into the container. Used for bulk ingest operations where the file list could be large (avoids command-line length limits).
+2. **`--file-path <path> [<path>...]`** - one or more file paths as CLI args. For small/ad-hoc operations.
+
+The existing `--directory` flag is kept for backward compatibility but the primary path from Go becomes `--manifest`.
+
+Manifest format:
+```json
+{
+  "files": [
+    "/sources/root/2024/Draft/notes.md",
+    "/sources/root/2024/Draft/todo.txt",
+    "/sources/root/2025/Draft/readme.md"
+  ]
+}
+```
+
+### Mount strategy
+
+Go finds the common parent of all resolved file paths and mounts it as a single volume (e.g. `-v c:/myfolder:/sources/root`). File paths in the manifest are relative to this container mount. This avoids any mount collision issues regardless of how many directories the glob resolves to.
 
 ### Pass resolved extensions through the ingest pipeline
 
@@ -63,3 +90,5 @@ Fix: use a unique mount suffix when collisions are detected. For example `/sourc
 - [Pattern matches unexpected directories] -> User responsibility. The TUI could show a preview of matched directories before ingesting, but this is not in initial scope.
 - [Windows path separator issues] -> `doublestar` handles both `/` and `\`. Paths in config.json already use forward slashes (via `filepath.ToSlash`).
 - [Performance on deep trees] -> `doublestar.Glob` walks the filesystem. For very deep trees this could be slow. Acceptable for a local tool; not a concern at personal-use scale.
+- [Manifest file cleanup] -> The manifest is written to a temp file and mounted. Go should clean it up after the container exits.
+- [Backward compatibility] -> `--directory` is kept on `ingest.py` so existing Docker Compose usage still works. The Go orchestrator switches to `--manifest`.

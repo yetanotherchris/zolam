@@ -70,9 +70,38 @@ All resolved paths SHALL have trailing slashes stripped and use forward slashes 
 - **WHEN** a glob resolves to `c:\notes\2024\Draft`
 - **THEN** the resolved path is `c:/notes/2024/Draft`
 
-### Requirement: Docker volume mount names are unique
-When multiple resolved directories have the same base name, the system SHALL generate unique container mount points to avoid Docker volume collisions.
+### Requirement: Go performs file discovery and passes file paths to the container
+The Go side SHALL resolve globs to directories, walk them with extension filtering, and pass individual file paths to the Python ingest container. The Python container SHALL NOT perform directory traversal for glob-resolved ingests.
 
-#### Scenario: Two directories with same base name
-- **WHEN** a glob resolves to `c:/notes/2024/Draft` and `c:/notes/2025/Draft`
-- **THEN** the container mount points are distinct (e.g. `/sources/Draft` and `/sources/Draft_1`)
+#### Scenario: Glob-resolved ingest passes file paths
+- **WHEN** a glob pattern resolves to directories containing `notes.md`, `todo.txt`, and `readme.md`
+- **THEN** Go discovers the files, writes them to a manifest, and passes the manifest to the container
+
+### Requirement: Ingest container accepts a manifest file
+`ingest.py` SHALL accept a `--manifest <path>` argument pointing to a JSON file containing a list of file paths to process. The manifest format SHALL be `{"files": ["path1", "path2", ...]}`.
+
+#### Scenario: Manifest-based ingest
+- **WHEN** the container is invoked with `--manifest /tmp/manifest.json`
+- **AND** the manifest contains `{"files": ["/sources/root/notes.md", "/sources/root/readme.md"]}`
+- **THEN** the container processes exactly those two files
+
+### Requirement: Ingest container accepts individual file paths
+`ingest.py` SHALL accept a `--file-path <path> [<path>...]` argument for passing one or more file paths directly as CLI args.
+
+#### Scenario: File path args
+- **WHEN** the container is invoked with `--file-path /sources/root/notes.md /sources/root/readme.md`
+- **THEN** the container processes exactly those two files
+
+### Requirement: Existing --directory flag is preserved
+The existing `--directory` flag on `ingest.py` SHALL continue to work for backward compatibility. The Go orchestrator switches to `--manifest` as the primary interface.
+
+#### Scenario: Directory flag still works
+- **WHEN** the container is invoked with `--directory /sources/notes`
+- **THEN** the container walks the directory and processes files as before
+
+### Requirement: Single volume mount using common parent
+When passing file paths to the container, Go SHALL mount the common parent directory of all resolved files as a single Docker volume. File paths in the manifest SHALL be relative to this container mount point.
+
+#### Scenario: Common parent mounted
+- **WHEN** resolved files are under `c:/myfolder/2024/Draft/` and `c:/myfolder/2025/Draft/`
+- **THEN** Go mounts `c:/myfolder` as `/sources/root` and manifest paths are relative to `/sources/root`
