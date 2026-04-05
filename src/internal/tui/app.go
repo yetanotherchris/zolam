@@ -20,6 +20,7 @@ const (
 	ingestView
 	progressView
 	settingsView
+	passwordView
 )
 
 // AppModel is the root bubbletea model that switches between views.
@@ -29,6 +30,7 @@ type AppModel struct {
 	ingest       IngestModel
 	progress     ProgressModel
 	settings     SettingsModel
+	password     PasswordModel
 	config       *domain.Config
 	dockerClient *docker.DockerClient
 	ingester     *zolam.Ingester
@@ -76,6 +78,11 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.progress = NewProgressModel("Ingest")
 		m.state = progressView
 		return m, m.runIngest(msg.Directories, msg.Extensions)
+
+	case PasswordSubmitMsg:
+		m.progress = NewProgressModel("Download (rclone)")
+		m.state = progressView
+		return m, m.runRclone(msg.Password)
 	}
 
 	switch m.state {
@@ -87,6 +94,8 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateProgress(msg)
 	case settingsView:
 		return m.updateSettings(msg)
+	case passwordView:
+		return m.updatePassword(msg)
 	}
 
 	return m, nil
@@ -115,9 +124,9 @@ func (m AppModel) updateMenu(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.runUpdateOnly()
 
 	case 2: // Download (rclone)
-		m.progress = NewProgressModel("Download (rclone)")
-		m.state = progressView
-		return m, m.runRclone()
+		m.password = NewPasswordModel("Rclone Config Password")
+		m.state = passwordView
+		return m, m.password.Init()
 
 	case 3: // Stats
 		m.progress = NewProgressModel("Stats")
@@ -186,6 +195,8 @@ func (m AppModel) View() string {
 		return DocStyle.Render(m.progress.View())
 	case settingsView:
 		return DocStyle.Render(m.settings.View())
+	case passwordView:
+		return DocStyle.Render(m.password.View())
 	}
 	return ""
 }
@@ -264,9 +275,15 @@ func (m AppModel) runUpdateOnly() tea.Cmd {
 	}
 }
 
-func (m AppModel) runRclone() tea.Cmd {
+func (m AppModel) updatePassword(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+	m.password, cmd = m.password.Update(msg)
+	return m, cmd
+}
+
+func (m AppModel) runRclone(configPass string) tea.Cmd {
 	return func() tea.Msg {
-		cmd, err := m.dockerClient.RcloneCopy(m.config.RcloneSource, m.config.DownloadsDir(), m.config.RcloneConfigDir)
+		cmd, err := m.dockerClient.RcloneCopy(m.config.RcloneSource, m.config.DownloadsDir(), m.config.RcloneConfigDir, configPass)
 		if err != nil {
 			return OperationDoneMsg{Err: err}
 		}
