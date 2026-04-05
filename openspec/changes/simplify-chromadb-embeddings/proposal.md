@@ -1,26 +1,22 @@
-# Proposal: Simplify ChromaDB Embeddings — Keep Python, Explore Options
+# Proposal: Simplify ChromaDB Embeddings — Investigation
 
 ## Why
 
-The current architecture uses a separate Python Docker container (`ingest.py`) to extract text, chunk it, compute embeddings client-side (all-MiniLM-L6-v2 via onnxruntime), and send vectors to ChromaDB. This results in a ~750MB+ Docker image.
+Investigated whether the ChromaDB server could generate embeddings server-side, which would allow removing onnxruntime, tokenizers, and the pre-downloaded model from the Python ingest container — significantly reducing Docker image size.
 
-Initial investigation revealed that **ChromaDB does NOT generate embeddings server-side** — the Python `chromadb` client library computes them locally before sending vectors via HTTP. This means `onnxruntime` and `tokenizers` cannot simply be removed.
+## Finding
 
-However, Python remains the right choice for text extraction — PyMuPDF and python-docx are significantly superior to Go alternatives for PDF/DOCX parsing quality.
+**ChromaDB server does NOT generate embeddings.** The Python `chromadb` client library computes embeddings client-side using `ONNXMiniLM_L6_V2` before sending vectors via HTTP. The server only stores and queries pre-computed vectors.
 
-## Options Investigated
+Evidence from ChromaDB source code:
+- Server API accepts `embeddings: Optional` but never generates them
+- Zero `embedding_function` or `generate_embedding` references in `chromadb/server/`
+- Embedding generation happens in client-side `Collection._validate_and_prepare_add_request()`
+- `SegmentAPI._add()` expects pre-computed `Embeddings` as a required parameter
 
-1. **"Let the server embed"** — INVALID. ChromaDB server does not compute embeddings. The Python client does it client-side before making HTTP calls.
-2. **Eliminate Python entirely (Go + HTTP)** — Would require computing embeddings in Go (hard) or calling an external embedding API. Go PDF/DOCX libraries are inferior to Python's.
-3. **Keep Python for extraction + embeddings** — Current approach. The Dockerfile size is driven by onnxruntime + model weights, which are required.
+## Outcome
 
-## What Changes
-
-Given the constraints, the scope is reduced to documentation corrections and minor cleanup:
-
-- **Correct** `CLAUDE.md` to clarify that embeddings are computed by the Python client library, not by the ChromaDB server
-- **Update** OpenSpec to document findings for future reference
-
-## Key Finding
-
-The `chromadb.HttpClient` Python class wraps HTTP calls but the `Collection` object runs the embedding function **client-side** in `Collection.upsert()` before POSTing vectors to the server. A raw HTTP client (Go or otherwise) sending `documents` without `embeddings` will fail.
+No changes. The current architecture is correct:
+- Python client computes embeddings client-side (required by ChromaDB design)
+- onnxruntime + tokenizers + model weights must remain in the Docker image
+- PyMuPDF and python-docx provide superior text extraction vs Go alternatives
