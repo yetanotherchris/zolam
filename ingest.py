@@ -3,8 +3,7 @@ ChromaDB Ingestion Script (Docker CLI)
 
 Ingests markdown, PDF, and DOCX files into ChromaDB for semantic search
 via the chroma-mcp server. Connects to ChromaDB over HTTP using HttpClient.
-Embeddings are generated server-side by ChromaDB's default embedding function
-(all-MiniLM-L6-v2, 384 dimensions).
+Uses ChromaDB's default embedding function (all-MiniLM-L6-v2).
 
 Usage (Docker Compose):
     docker compose --profile ingest run --rm \
