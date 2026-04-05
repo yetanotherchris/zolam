@@ -23,15 +23,14 @@ Zolam is a semantic search tool that ingests personal files (markdown, PDF, DOCX
 │  Ingest container (ingest.py)                   │
 │  1. Extracts text from files (PDF, DOCX, etc.)  │
 │  2. Chunks text into ~2000 char segments        │
-│  3. Embeds chunks CLIENT-SIDE using             │
-│     all-MiniLM-L6-v2 (onnxruntime) -> 384 dims  │
-│  4. Sends vectors + metadata to ChromaDB server │
+│  3. Sends text chunks + metadata to ChromaDB    │
 └──────────────┬──────────────────────────────────┘
                │ HTTP
 ┌──────────────▼──────────────────────────────────┐
 │  ChromaDB server container                      │
-│  - Stores and queries 384-dim vectors           │
-│  - Does NOT generate embeddings                 │
+│  - Generates embeddings server-side using       │
+│    all-MiniLM-L6-v2 (384 dimensions)            │
+│  - Stores and queries vectors                   │
 └──────────────┬──────────────────────────────────┘
                │ queried by
 ┌──────────────▼──────────────────────────────────┐
@@ -41,7 +40,7 @@ Zolam is a semantic search tool that ingests personal files (markdown, PDF, DOCX
 └─────────────────────────────────────────────────┘
 ```
 
-Embeddings always run client-side, not on the ChromaDB server. The embedding model (all-MiniLM-L6-v2, 384 dimensions) is baked into the Docker image. The chroma-mcp plugin used by Claude must use the same model and vector size (384) or queries will fail due to dimension mismatch.
+Embeddings are generated server-side by ChromaDB using its default embedding function (all-MiniLM-L6-v2, 384 dimensions). The ingest container sends raw text; ChromaDB handles vectorization. The chroma-mcp plugin used by Claude must use the same model and vector size (384) or queries will fail due to dimension mismatch.
 
 ## Build & Test
 
