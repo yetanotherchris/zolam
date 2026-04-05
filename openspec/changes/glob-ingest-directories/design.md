@@ -61,7 +61,7 @@ This eliminates the Docker volume mount collision problem entirely. Instead of m
 
 The existing `--directory` flag is kept for backward compatibility but the primary path from Go becomes `--manifest`.
 
-Manifest format:
+Manifest format (paths are absolute container paths):
 ```json
 {
   "files": [
@@ -74,7 +74,11 @@ Manifest format:
 
 ### Mount strategy
 
-Go finds the common parent of all resolved file paths and mounts it as a single volume (e.g. `-v c:/myfolder:/sources/root`). File paths in the manifest are relative to this container mount. This avoids any mount collision issues regardless of how many directories the glob resolves to.
+Go groups resolved file paths by drive letter (Windows) or assumes a single root (Unix). For each drive group, it finds the common parent and mounts it as a volume (e.g. `-v c:/myfolder:/sources/c`). In practice, most users will have all files on one drive so there will be a single mount. File paths in the manifest use absolute container paths.
+
+### Source label for chunk metadata
+
+`ingest.py` currently uses the directory name as the `source` metadata field in ChromaDB chunks. When switching to manifest/file-path mode, the directory context is lost. Fix: when processing individual files, derive `source` from the file's parent directory name. This preserves the existing metadata convention without requiring Go to pass source labels.
 
 ### Pass resolved extensions through the ingest pipeline
 

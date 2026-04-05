@@ -99,9 +99,20 @@ The existing `--directory` flag on `ingest.py` SHALL continue to work for backwa
 - **WHEN** the container is invoked with `--directory /sources/notes`
 - **THEN** the container walks the directory and processes files as before
 
-### Requirement: Single volume mount using common parent
-When passing file paths to the container, Go SHALL mount the common parent directory of all resolved files as a single Docker volume. File paths in the manifest SHALL be relative to this container mount point.
+### Requirement: Volume mounts use common parent per drive
+When passing file paths to the container, Go SHALL group files by drive letter (Windows) and mount the common parent of each group as a Docker volume. File paths in the manifest SHALL use absolute container paths.
 
-#### Scenario: Common parent mounted
+#### Scenario: Common parent mounted (single drive)
 - **WHEN** resolved files are under `c:/myfolder/2024/Draft/` and `c:/myfolder/2025/Draft/`
-- **THEN** Go mounts `c:/myfolder` as `/sources/root` and manifest paths are relative to `/sources/root`
+- **THEN** Go mounts `c:/myfolder` as `/sources/c` and manifest paths use absolute container paths (e.g. `/sources/c/2024/Draft/notes.md`)
+
+#### Scenario: Files across multiple drives (Windows)
+- **WHEN** resolved files are under `c:/notes/` and `d:/docs/`
+- **THEN** Go mounts both (`c:/notes` as `/sources/c`, `d:/docs` as `/sources/d`) and manifest paths reference the correct mount
+
+### Requirement: Source metadata derived from parent directory
+When processing files via `--manifest` or `--file-path`, `ingest.py` SHALL derive the `source` metadata field from the file's parent directory name, preserving the existing metadata convention.
+
+#### Scenario: Source label from parent directory
+- **WHEN** processing file `/sources/c/2024/Draft/notes.md` via manifest
+- **THEN** the chunk metadata `source` field is set to `Draft`

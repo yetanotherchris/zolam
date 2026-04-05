@@ -20,9 +20,9 @@
 
 ## 4. Docker Mount Strategy (Go)
 
-- [ ] 4.1 Compute the common parent directory of all resolved file paths
-- [ ] 4.2 Mount the common parent as a single volume (e.g. `-v c:/myfolder:/sources/root`)
-- [ ] 4.3 Convert manifest file paths to be relative to the container mount point
+- [ ] 4.1 Group resolved file paths by drive letter (Windows) or single root (Unix)
+- [ ] 4.2 Compute common parent per group and mount each as a volume (e.g. `-v c:/myfolder:/sources/c`)
+- [ ] 4.3 Write manifest with absolute container paths
 - [ ] 4.4 Mount the manifest file into the container and pass `--manifest <container-path>` to `ingest.py`
 
 ## 5. Python Ingest Container
@@ -30,7 +30,8 @@
 - [ ] 5.1 Add `--manifest <path>` argument to `ingest.py` that reads a JSON file of file paths
 - [ ] 5.2 Add `--file-path <path> [<path>...]` argument to `ingest.py` for individual files
 - [ ] 5.3 When `--manifest` or `--file-path` is used, process exactly those files (no directory walking)
-- [ ] 5.4 Keep existing `--directory` flag working for backward compatibility
+- [ ] 5.4 Derive `source` metadata from the file's parent directory name when using `--manifest` or `--file-path`
+- [ ] 5.5 Keep existing `--directory` flag working for backward compatibility
 
 ## 6. Integrate into Ingest Pipeline (Go)
 
