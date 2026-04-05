@@ -3,6 +3,7 @@ package tui
 import (
 	"bufio"
 	"fmt"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -36,6 +37,7 @@ type AppModel struct {
 	ingester     *zolam.Ingester
 	warnings     []string
 	sender       *ProgramSender
+	process      *RunningProcess
 }
 
 // ProgramSender holds a reference to the tea.Program for sending messages
@@ -43,6 +45,17 @@ type AppModel struct {
 // model copying.
 type ProgramSender struct {
 	Program *tea.Program
+}
+
+type RunningProcess struct {
+	Cmd *exec.Cmd
+}
+
+func (r *RunningProcess) Kill() {
+	if r.Cmd != nil && r.Cmd.Process != nil {
+		r.Cmd.Process.Kill()
+		r.Cmd = nil
+	}
 }
 
 // Sender returns the ProgramSender so callers can set the program reference.
@@ -60,6 +73,7 @@ func NewApp(cfg *domain.Config, dc *docker.DockerClient, ing *zolam.Ingester, wa
 		ingester:     ing,
 		warnings:     warnings,
 		sender:       &ProgramSender{},
+		process:      &RunningProcess{},
 	}
 }
 
@@ -83,6 +97,12 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.progress = NewProgressModel("Download (rclone)")
 		m.state = progressView
 		return m, m.runRclone(msg.Password)
+
+	case CancelOperationMsg:
+		m.process.Kill()
+		m.state = menuView
+		m.menu.chosen = -1
+		return m, nil
 	}
 
 	switch m.state {
@@ -298,6 +318,7 @@ func (m AppModel) runRclone(configPass string) tea.Cmd {
 			return OperationDoneMsg{Err: err}
 		}
 
+		m.process.Cmd = cmd
 		p := m.sender.Program
 		scanner := bufio.NewScanner(stdout)
 		for scanner.Scan() {

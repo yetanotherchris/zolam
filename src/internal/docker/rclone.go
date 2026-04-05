@@ -2,11 +2,16 @@ package docker
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 )
 
 func (c *DockerClient) RcloneCopy(source, dest, configDir, configPass string) (*exec.Cmd, error) {
-	args := []string{"run", "--rm",
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		return nil, fmt.Errorf("create downloads dir: %w", err)
+	}
+
+	args := []string{"run", "--rm", "-i",
 		"-v", fmt.Sprintf("%s:/data", dest),
 		"-v", fmt.Sprintf("%s:/config/rclone", configDir),
 	}
