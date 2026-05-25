@@ -18,8 +18,9 @@ zolam ingest ~/notes ~/docs --extensions .md,.txt,.pdf
 # Update only changed files (reads directories from config)
 zolam update
 
-# Register the MCP server so Claude can search your files
+# Register the MCP server so Claude Code can search your files
 zolam mcp claude
+# (see AI Integration section for OpenCode setup)
 ```
 
 ### Installation
@@ -102,15 +103,42 @@ Subdirectories within `dataDir` are created by convention:
 
 `.md`, `.pdf`, `.docx`, `.txt`, `.py`, `.cs`, `.js`, `.ts`, `.json`, `.yml`, `.yaml`
 
-## Claude Integration
+## AI Integration
 
-Register the chroma-mcp server to give Claude access to your ingested files:
+Make sure ChromaDB is running (`zolam chromadb start`) before starting your AI tool.
+
+### Claude Code
+
+Register the chroma-mcp server with a single command:
 
 ```bash
 zolam mcp claude
 ```
 
-Make sure ChromaDB is running (`zolam chromadb start`) before using Claude with the MCP server.
+### OpenCode
+
+Run the following to register the MCP server:
+
+```bash
+opencode mcp add chroma --type local -- uvx chroma-mcp --client-type http --host localhost --port 8000 --ssl false
+```
+
+Or add it manually to `~/.config/opencode/opencode.json` (global) or `./opencode.json` (project):
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "chroma": {
+      "type": "local",
+      "command": ["uvx", "chroma-mcp", "--client-type", "http", "--host", "localhost", "--port", "8000", "--ssl", "false"],
+      "enabled": true
+    }
+  }
+}
+```
+
+Both approaches require `uv` to be installed (`brew install uv` or `pip install uv`).
 
 ## Building from Source
 
