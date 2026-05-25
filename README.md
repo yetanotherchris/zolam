@@ -110,7 +110,7 @@ Make sure ChromaDB is running (`zolam chromadb start`) before starting your AI t
 
 ### Claude Code
 
-Register the chroma-mcp server with a single command:
+Register the [chroma-mcp](https://github.com/chroma-core/chroma-mcp) server with a single command:
 
 ```bash
 zolam mcp claude
