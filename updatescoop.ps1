@@ -17,10 +17,10 @@ Write-Host "SHA256 for windows-amd64: $hash"
 
 Remove-Item $tempFile
 
-# Read and update the manifest
-$manifest = Get-Content -Path $manifestPath -Raw
-$manifest = $manifest -replace 'VERSION', $Version
-$manifest = $manifest -replace 'SHA256', $hash
+$manifest = Get-Content -Path $manifestPath -Raw | ConvertFrom-Json
+$manifest.version = $Version
+$manifest.architecture."64bit".url = $url
+$manifest.architecture."64bit".hash = $hash
 
-Set-Content -Path $manifestPath -Value $manifest -NoNewline
+$manifest | ConvertTo-Json -Depth 10 | Set-Content -Path $manifestPath -NoNewline
 Write-Host "Updated $manifestPath with version $Version"
