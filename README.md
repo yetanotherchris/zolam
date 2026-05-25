@@ -34,6 +34,7 @@ brew install yetanotherchris/tap/zolam
 ```powershell
 winget install yetanotherchris.zolam
 ```
+> Note: the winget package may lag behind the latest release, as each new version requires a PR to the winget-pkgs repository.
 
 **Scoop (Windows)**
 ```powershell
