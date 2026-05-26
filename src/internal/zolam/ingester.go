@@ -170,38 +170,38 @@ func (i *Ingester) Run(directories []string, opts IngestOptions, outputFn func(s
 	return runAndStream(cmd, outputFn)
 }
 
-func (i *Ingester) manifestPath() string {
-	return filepath.Join(i.dataDir, ".zolam-hashes.json")
+func (i *Ingester) hashesPath(collection string) string {
+	return filepath.Join(i.dataDir, collection+"-hashes.json")
 }
 
-func (i *Ingester) loadManifest() (map[string]string, error) {
-	data, err := os.ReadFile(i.manifestPath())
+func (i *Ingester) loadHashes(collection string) (map[string]string, error) {
+	data, err := os.ReadFile(i.hashesPath(collection))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return make(map[string]string), nil
 		}
-		return nil, fmt.Errorf("reading manifest: %w", err)
+		return nil, fmt.Errorf("reading hashes: %w", err)
 	}
 
-	var manifest map[string]string
-	if err := json.Unmarshal(data, &manifest); err != nil {
-		return nil, fmt.Errorf("parsing manifest: %w", err)
+	var hashes map[string]string
+	if err := json.Unmarshal(data, &hashes); err != nil {
+		return nil, fmt.Errorf("parsing hashes: %w", err)
 	}
-	return manifest, nil
+	return hashes, nil
 }
 
-func (i *Ingester) saveManifest(manifest map[string]string) error {
-	data, err := json.MarshalIndent(manifest, "", "  ")
+func (i *Ingester) saveHashes(collection string, hashes map[string]string) error {
+	data, err := json.MarshalIndent(hashes, "", "  ")
 	if err != nil {
-		return fmt.Errorf("marshalling manifest: %w", err)
+		return fmt.Errorf("marshalling hashes: %w", err)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(i.manifestPath()), 0o755); err != nil {
-		return fmt.Errorf("creating manifest directory: %w", err)
+	if err := os.MkdirAll(filepath.Dir(i.hashesPath(collection)), 0o755); err != nil {
+		return fmt.Errorf("creating hashes directory: %w", err)
 	}
 
-	if err := os.WriteFile(i.manifestPath(), data, 0o644); err != nil {
-		return fmt.Errorf("writing manifest: %w", err)
+	if err := os.WriteFile(i.hashesPath(collection), data, 0o644); err != nil {
+		return fmt.Errorf("writing hashes: %w", err)
 	}
 	return nil
 }
@@ -209,12 +209,12 @@ func (i *Ingester) saveManifest(manifest map[string]string) error {
 // RunUpdateOnly performs a differential ingest: only files that have been added
 // or changed since the last run are ingested.
 func (i *Ingester) RunUpdateOnly(directories []string, collection string, outputFn func(string)) (*UpdateResult, error) {
-	oldManifest, err := i.loadManifest()
+	oldHashes, err := i.loadHashes(collection)
 	if err != nil {
 		return nil, err
 	}
 
-	newManifest := make(map[string]string)
+	newHashes := make(map[string]string)
 	absDirectories := make([]string, 0, len(directories))
 
 	for _, dir := range directories {
@@ -229,15 +229,15 @@ func (i *Ingester) RunUpdateOnly(directories []string, collection string, output
 			return nil, fmt.Errorf("hashing directory %s: %w", absPath, err)
 		}
 		for k, v := range hashes {
-			newManifest[k] = v
+			newHashes[k] = v
 		}
 	}
 
 	var added, changed, removed, unchanged int
 	var filesToIngest []string
 
-	for path, newHash := range newManifest {
-		oldHash, exists := oldManifest[path]
+	for path, newHash := range newHashes {
+		oldHash, exists := oldHashes[path]
 		if !exists {
 			added++
 			filesToIngest = append(filesToIngest, path)
@@ -249,8 +249,8 @@ func (i *Ingester) RunUpdateOnly(directories []string, collection string, output
 		}
 	}
 
-	for path := range oldManifest {
-		if _, exists := newManifest[path]; !exists {
+	for path := range oldHashes {
+		if _, exists := newHashes[path]; !exists {
 			removed++
 		}
 	}
@@ -295,7 +295,7 @@ func (i *Ingester) RunUpdateOnly(directories []string, collection string, output
 		outputFn("No changes detected, nothing to ingest.")
 	}
 
-	if err := i.saveManifest(newManifest); err != nil {
+	if err := i.saveHashes(collection, newHashes); err != nil {
 		return nil, err
 	}
 
