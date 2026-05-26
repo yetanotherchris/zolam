@@ -6,21 +6,15 @@ Ingest your personal files (PDF, Markdown, Docx, Txt, code) into ChromaDB for se
 
 **Prerequisites:** Docker and Docker Compose.
 
-Install zolam, then:
-
 ```bash
 # Start ChromaDB
 zolam chromadb start
 
-# Ingest your files
-zolam ingest ~/notes ~/docs --extensions .md,.txt,.pdf
+# Ingest files into a named collection
+zolam ingest ~/notes --collection my-project --extensions .md,.txt
 
-# Update only changed files (reads directories from config)
-zolam update
-
-# Register the MCP server so Claude Code can search your files
+# Register the MCP server so Claude can search your files
 zolam mcp claude
-# (see AI Integration section for OpenCode setup)
 ```
 
 ### Installation
@@ -44,57 +38,68 @@ scoop install zolam
 
 ## Commands
 
-Run `zolam` with no arguments for the interactive TUI, or use CLI subcommands:
+### chromadb
 
 ```bash
-zolam ingest <dirs> [--extensions .md,.txt] [--collection name]  # Ingest files
-zolam update [dirs]                                               # Re-ingest changed files
-zolam stats                                                       # Collection info
-zolam config                                                      # Show configuration
-zolam chromadb start|stop|status                                  # Manage ChromaDB
-zolam reset [--collection name]                                   # Reset a collection
-zolam mcp claude                                                  # Register MCP server
+zolam chromadb start    # Start the ChromaDB container
+zolam chromadb stop     # Stop the ChromaDB container
+zolam chromadb status   # Check if ChromaDB is running
 ```
 
-## Configuration
+### ingest
 
-Settings are loaded in this order (highest priority wins):
+Ingest files from one or more directories into a ChromaDB collection. Both `--collection` and `--extensions` are required.
 
-1. Defaults
-2. `~/.zolam/config.json`
-3. Environment variables
-4. CLI flags
+```bash
+zolam ingest <dirs...> --collection <name> --extensions <exts>
 
-### config.json
+# Ingest markdown files
+zolam ingest ~/notes --collection my-project --extensions .md
 
-Located at `~/.zolam/config.json`. Created automatically after your first ingest.
+# Ingest PDFs
+zolam ingest ~/books --collection reading-list --extensions .pdf
 
-```json
-{
-  "collectionName": "my-notes",
-  "dataDir": "~/.zolam",
-  "directories": [
-    {
-      "path": "/home/user/notes",
-      "extensions": [".md", ".txt"]
-    }
-  ]
-}
+# Multiple directories and extensions
+zolam ingest ~/notes ~/docs --collection research --extensions .md,.txt,.pdf
+
+# Reset the collection before ingesting
+zolam ingest ~/notes --collection my-project --extensions .md --reset
 ```
 
-The `directories` node stores previously ingested directories and their file extensions. This allows `zolam update` to run without arguments - it reads the directories from config.
+Subdirectories are scanned recursively.
 
-Subdirectories within `dataDir` are created by convention:
-- `chromadb/` - ChromaDB persistent storage
+### update
 
-### Environment Variables
+Re-ingest only files that have changed since the last run. Directories must be specified explicitly.
+
+```bash
+zolam update <dirs...> --collection <name>
+
+zolam update ~/notes --collection my-project
+```
+
+### collections
+
+```bash
+zolam collections list              # List all collections
+zolam collections remove <name>     # Delete a collection
+```
+
+### mcp
+
+Register the [chroma-mcp](https://github.com/chroma-core/chroma-mcp) server with an AI provider.
+
+```bash
+zolam mcp claude    # Register with Claude Code
+```
+
+## Environment Variables
 
 | Variable | Default | Description |
 |---|---|---|
-| `COLLECTION_NAME` | `my-notes` | ChromaDB collection name |
-| `ZOLAM_DATA_DIR` | `~/.zolam` | Zolam data directory |
+| `ZOLAM_CHROMADB_DATA_DIR` | `~/.zolam/chromadb` | ChromaDB persistent storage path |
 
-### Supported File Extensions
+## Supported File Extensions
 
 `.md`, `.pdf`, `.docx`, `.txt`, `.py`, `.cs`, `.js`, `.ts`, `.json`, `.yml`, `.yaml`
 
@@ -104,21 +109,17 @@ Make sure ChromaDB is running (`zolam chromadb start`) before starting your AI t
 
 ### Claude Code
 
-Register the [chroma-mcp](https://github.com/chroma-core/chroma-mcp) server with a single command:
-
 ```bash
 zolam mcp claude
 ```
 
 ### OpenCode
 
-Run the following to register the MCP server:
-
 ```bash
 opencode mcp add chroma --type local -- uvx chroma-mcp --client-type http --host localhost --port 8000 --ssl false
 ```
 
-Or add it manually to `~/.config/opencode/opencode.json` (global) or `./opencode.json` (project):
+Or add manually to `~/.config/opencode/opencode.json` (global) or `./opencode.json` (project):
 
 ```json
 {
