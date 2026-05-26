@@ -31,15 +31,11 @@ type UpdateResult struct {
 
 // Ingester orchestrates the full ingest pipeline.
 type Ingester struct {
-	docker  *docker.DockerClient
-	dataDir string
+	docker *docker.DockerClient
 }
 
-func NewIngester(dc *docker.DockerClient, cfg *domain.Config) *Ingester {
-	return &Ingester{
-		docker:  dc,
-		dataDir: cfg.DataDir,
-	}
+func NewIngester(dc *docker.DockerClient) *Ingester {
+	return &Ingester{docker: dc}
 }
 
 type streamableCmd interface {
@@ -170,12 +166,8 @@ func (i *Ingester) Run(directories []string, opts IngestOptions, outputFn func(s
 	return runAndStream(cmd, outputFn)
 }
 
-func (i *Ingester) hashesPath(collection string) string {
-	return filepath.Join(i.dataDir, collection+"-hashes.json")
-}
-
-func (i *Ingester) loadHashes(collection string) (map[string]string, error) {
-	data, err := os.ReadFile(i.hashesPath(collection))
+func (i *Ingester) loadHashes(path string) (map[string]string, error) {
+	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return make(map[string]string), nil
@@ -190,17 +182,17 @@ func (i *Ingester) loadHashes(collection string) (map[string]string, error) {
 	return hashes, nil
 }
 
-func (i *Ingester) saveHashes(collection string, hashes map[string]string) error {
+func (i *Ingester) saveHashes(path string, hashes map[string]string) error {
 	data, err := json.MarshalIndent(hashes, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshalling hashes: %w", err)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(i.hashesPath(collection)), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("creating hashes directory: %w", err)
 	}
 
-	if err := os.WriteFile(i.hashesPath(collection), data, 0o644); err != nil {
+	if err := os.WriteFile(path, data, 0o644); err != nil {
 		return fmt.Errorf("writing hashes: %w", err)
 	}
 	return nil
@@ -208,8 +200,8 @@ func (i *Ingester) saveHashes(collection string, hashes map[string]string) error
 
 // RunUpdateOnly performs a differential ingest: only files that have been added
 // or changed since the last run are ingested.
-func (i *Ingester) RunUpdateOnly(directories []string, collection string, outputFn func(string)) (*UpdateResult, error) {
-	oldHashes, err := i.loadHashes(collection)
+func (i *Ingester) RunUpdateOnly(directories []string, collection string, hashesFilePath string, outputFn func(string)) (*UpdateResult, error) {
+	oldHashes, err := i.loadHashes(hashesFilePath)
 	if err != nil {
 		return nil, err
 	}
@@ -295,7 +287,7 @@ func (i *Ingester) RunUpdateOnly(directories []string, collection string, output
 		outputFn("No changes detected, nothing to ingest.")
 	}
 
-	if err := i.saveHashes(collection, newHashes); err != nil {
+	if err := i.saveHashes(hashesFilePath, newHashes); err != nil {
 		return nil, err
 	}
 
