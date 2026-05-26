@@ -52,7 +52,6 @@ zolam update [dirs]                                               # Re-ingest ch
 zolam stats                                                       # Collection info
 zolam config                                                      # Show configuration
 zolam chromadb start|stop|status                                  # Manage ChromaDB
-zolam download --source gdrive:/path --dest ~/notes               # Download via rclone
 zolam reset [--collection name]                                   # Reset a collection
 zolam mcp claude                                                  # Register MCP server
 ```
@@ -73,8 +72,6 @@ Located at `~/.zolam/config.json`. Created automatically after your first ingest
 ```json
 {
   "collectionName": "my-notes",
-  "rcloneSource": "",
-  "rcloneConfigDir": "~/.config/rclone",
   "dataDir": "~/.zolam",
   "directories": [
     {
@@ -89,15 +86,12 @@ The `directories` node stores previously ingested directories and their file ext
 
 Subdirectories within `dataDir` are created by convention:
 - `chromadb/` - ChromaDB persistent storage
-- `downloads/` - rclone download destination
 
 ### Environment Variables
 
 | Variable | Default | Description |
 |---|---|---|
 | `COLLECTION_NAME` | `my-notes` | ChromaDB collection name |
-| `RCLONE_SOURCE` | | Source path on remote |
-| `RCLONE_CONFIG_DIR` | `~/.config/rclone` | rclone config directory |
 | `ZOLAM_DATA_DIR` | `~/.zolam` | Zolam data directory |
 
 ### Supported File Extensions

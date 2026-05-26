@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"bufio"
 	"fmt"
 	"os/exec"
 	"path/filepath"
@@ -21,7 +20,6 @@ const (
 	ingestView
 	progressView
 	settingsView
-	passwordView
 )
 
 // AppModel is the root bubbletea model that switches between views.
@@ -31,7 +29,6 @@ type AppModel struct {
 	ingest       IngestModel
 	progress     ProgressModel
 	settings     SettingsModel
-	password     PasswordModel
 	config       *domain.Config
 	dockerClient *docker.DockerClient
 	ingester     *zolam.Ingester
@@ -93,11 +90,6 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.state = progressView
 		return m, m.runIngest(msg.Directories, msg.Extensions)
 
-	case PasswordSubmitMsg:
-		m.progress = NewProgressModel("Download (rclone)")
-		m.state = progressView
-		return m, m.runRclone(msg.Password)
-
 	case CancelOperationMsg:
 		m.process.Kill()
 		m.state = menuView
@@ -114,8 +106,6 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateProgress(msg)
 	case settingsView:
 		return m.updateSettings(msg)
-	case passwordView:
-		return m.updatePassword(msg)
 	}
 
 	return m, nil
@@ -143,37 +133,32 @@ func (m AppModel) updateMenu(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.state = progressView
 		return m, m.runUpdateOnly()
 
-	case 2: // Download (rclone)
-		m.password = NewPasswordModel("Rclone Config Password")
-		m.state = passwordView
-		return m, m.password.Init()
-
-	case 3: // Stats
+	case 2: // Stats
 		m.progress = NewProgressModel("Stats")
 		m.state = progressView
 		return m, m.runStats()
 
-	case 4: // Reset Collection
+	case 3: // Reset Collection
 		m.progress = NewProgressModel("Reset Collection")
 		m.state = progressView
 		return m, m.runReset()
 
-	case 5: // Start ChromaDB
+	case 4: // Start ChromaDB
 		m.progress = NewProgressModel("Start ChromaDB")
 		m.state = progressView
 		return m, m.runStartChromaDB()
 
-	case 6: // Stop ChromaDB
+	case 5: // Stop ChromaDB
 		m.progress = NewProgressModel("Stop ChromaDB")
 		m.state = progressView
 		return m, m.runStopChromaDB()
 
-	case 7: // Settings
+	case 6: // Settings
 		m.settings = NewSettingsModel(m.config)
 		m.state = settingsView
 		return m, nil
 
-	case 8: // Quit
+	case 7: // Quit
 		return m, tea.Quit
 	}
 
@@ -215,8 +200,6 @@ func (m AppModel) View() string {
 		return DocStyle.Render(m.progress.View())
 	case settingsView:
 		return DocStyle.Render(m.settings.View())
-	case passwordView:
-		return DocStyle.Render(m.password.View())
 	}
 	return ""
 }
@@ -292,45 +275,6 @@ func (m AppModel) runUpdateOnly() tea.Cmd {
 
 		return OperationDoneMsg{Output: fmt.Sprintf("Update complete: %d added, %d changed, %d removed, %d unchanged",
 			result.Added, result.Changed, result.Removed, result.Unchanged)}
-	}
-}
-
-func (m AppModel) updatePassword(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmd tea.Cmd
-	m.password, cmd = m.password.Update(msg)
-	return m, cmd
-}
-
-func (m AppModel) runRclone(configPass string) tea.Cmd {
-	return func() tea.Msg {
-		cmd, err := m.dockerClient.RcloneCopy(m.config.RcloneSource, m.config.DownloadsDir(), m.config.RcloneConfigDir, configPass)
-		if err != nil {
-			return OperationDoneMsg{Err: err}
-		}
-
-		stdout, err := cmd.StdoutPipe()
-		if err != nil {
-			return OperationDoneMsg{Err: fmt.Errorf("stdout pipe: %w", err)}
-		}
-		cmd.Stderr = cmd.Stdout
-
-		if err := cmd.Start(); err != nil {
-			return OperationDoneMsg{Err: err}
-		}
-
-		m.process.Cmd = cmd
-		p := m.sender.Program
-		scanner := bufio.NewScanner(stdout)
-		for scanner.Scan() {
-			if p != nil {
-				p.Send(OutputLineMsg{Line: scanner.Text()})
-			}
-		}
-
-		if err := cmd.Wait(); err != nil {
-			return OperationDoneMsg{Err: err}
-		}
-		return OperationDoneMsg{}
 	}
 }
 

@@ -27,16 +27,6 @@ var settingsFields = []settingsField{
 		get:   func(c *domain.Config) string { return c.DataDir },
 		set:   func(c *domain.Config, v string) { c.DataDir = v },
 	},
-	{
-		label: "Rclone Source",
-		get:   func(c *domain.Config) string { return c.RcloneSource },
-		set:   func(c *domain.Config, v string) { c.RcloneSource = v },
-	},
-	{
-		label: "Rclone Config Dir",
-		get:   func(c *domain.Config) string { return c.RcloneConfigDir },
-		set:   func(c *domain.Config, v string) { c.RcloneConfigDir = v },
-	},
 }
 
 // SettingsModel is the bubbletea model for editing configuration.

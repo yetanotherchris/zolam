@@ -8,7 +8,7 @@ Zolam is a semantic search tool that ingests personal files (markdown, PDF, DOCX
 
 - **Go TUI/CLI**: Located in `src/`, built with Cobra (CLI), Bubbletea + Lipgloss (TUI)
 - **Python ingester**: `ingest.py` runs inside Docker to process files into ChromaDB
-- **Docker**: ChromaDB and zolam run as Docker containers via Docker Compose
+- **Docker**: ChromaDB runs as a Docker container via Docker Compose
 
 ## Architecture
 
@@ -59,7 +59,7 @@ src/
 ├── cmd/zolam/main.go        # Entry point, CLI subcommands
 ├── internal/
 │   ├── domain/                 # Config, manifest types
-│   ├── docker/                 # Docker/compose client, ChromaDB, rclone
+│   ├── docker/                 # Docker/compose client, ChromaDB
 │   ├── zolam/                  # Ingest pipeline, file hashing, stats
 │   └── tui/                    # Bubbletea TUI (app, menu, ingest, progress, styles)
 ├── go.mod
