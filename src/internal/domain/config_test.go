@@ -1,81 +1,10 @@
 package domain
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
 )
-
-func TestLoadConfig_Defaults(t *testing.T) {
-	// Point config.json to a non-existent temp file so the real one doesn't interfere.
-	configPathOverride = filepath.Join(t.TempDir(), "config.json")
-	t.Cleanup(func() { configPathOverride = "" })
-
-	for _, key := range []string{"COLLECTION_NAME", "ZOLAM_DATA_DIR"} {
-		t.Setenv(key, "")
-	}
-
-	cfg, _, err := LoadConfig()
-	if err != nil {
-		t.Fatalf("LoadConfig() returned unexpected error: %v", err)
-	}
-
-	if cfg.CollectionName != "my-notes" {
-		t.Errorf("CollectionName = %q, want %q", cfg.CollectionName, "my-notes")
-	}
-	homeDir, _ := os.UserHomeDir()
-	expectedDataDir := filepath.ToSlash(filepath.Join(homeDir, ".zolam"))
-	if cfg.DataDir != expectedDataDir {
-		t.Errorf("DataDir = %q, want %q", cfg.DataDir, expectedDataDir)
-	}
-	if envVal := os.Getenv("ZOLAM_DATA_DIR"); envVal != expectedDataDir {
-		t.Errorf("ZOLAM_DATA_DIR env = %q, want %q", envVal, expectedDataDir)
-	}
-}
-
-func TestLoadConfig_EnvVars(t *testing.T) {
-	configPathOverride = filepath.Join(t.TempDir(), "config.json")
-	t.Cleanup(func() { configPathOverride = "" })
-
-	t.Setenv("COLLECTION_NAME", "test-collection")
-	t.Setenv("ZOLAM_DATA_DIR", "")
-
-	cfg, _, err := LoadConfig()
-	if err != nil {
-		t.Fatalf("LoadConfig() returned unexpected error: %v", err)
-	}
-
-	if cfg.CollectionName != "test-collection" {
-		t.Errorf("CollectionName = %q, want %q", cfg.CollectionName, "test-collection")
-	}
-}
-
-func TestMergeFlags(t *testing.T) {
-	cfg := &Config{
-		CollectionName: "original",
-		DataDir:        "/original/path",
-	}
-
-	flags := map[string]string{
-		"collection-name": "overridden-collection",
-		"data-dir":        "/new/path",
-	}
-
-	cfg.MergeFlags(flags)
-
-	if cfg.CollectionName != "overridden-collection" {
-		t.Errorf("CollectionName = %q, want %q", cfg.CollectionName, "overridden-collection")
-	}
-	if cfg.DataDir != "/new/path" {
-		t.Errorf("DataDir = %q, want %q", cfg.DataDir, "/new/path")
-	}
-
-	cfg.MergeFlags(map[string]string{"collection-name": ""})
-	if cfg.CollectionName != "overridden-collection" {
-		t.Errorf("CollectionName changed to %q after empty flag, should remain %q", cfg.CollectionName, "overridden-collection")
-	}
-}
 
 func TestSupportedFileExtensions(t *testing.T) {
 	if len(SupportedFileExtensions) == 0 {
@@ -88,93 +17,36 @@ func TestSupportedFileExtensions(t *testing.T) {
 	}
 }
 
-func TestConfigJSON_LoadSave(t *testing.T) {
-	tmpDir := t.TempDir()
-	path := filepath.Join(tmpDir, "config.json")
+func TestNewConfig_Defaults(t *testing.T) {
+	os.Unsetenv("ZOLAM_CHROMADB_DATA_DIR")
 
-	cfg := &Config{
-		CollectionName: "test-col",
-		DataDir:        "/home/user/.zolam",
-		Directories: []DirectoryEntry{
-			{Path: "/home/user/notes", Extensions: []string{".md", ".txt"}},
-		},
-	}
+	cfg := NewConfig()
 
-	// Write config via the JSON format directly (simulating SaveConfig)
-	cj := configJSON{
-		CollectionName: cfg.CollectionName,
-		DataDir:        cfg.DataDir,
-		Directories:    cfg.Directories,
-	}
-	data, err := json.MarshalIndent(cj, "", "  ")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, data, 0o644); err != nil {
-		t.Fatal(err)
+	homeDir, _ := os.UserHomeDir()
+	expectedDataDir := filepath.ToSlash(filepath.Join(homeDir, ".zolam"))
+	if cfg.DataDir != expectedDataDir {
+		t.Errorf("DataDir = %q, want %q", cfg.DataDir, expectedDataDir)
 	}
 
-	// Load it back
-	loaded, err := loadConfigJSON(path)
-	if err != nil {
-		t.Fatalf("loadConfigJSON: %v", err)
-	}
-
-	if loaded.CollectionName != "test-col" {
-		t.Errorf("CollectionName = %q, want %q", loaded.CollectionName, "test-col")
-	}
-	if len(loaded.Directories) != 1 {
-		t.Fatalf("Directories length = %d, want 1", len(loaded.Directories))
-	}
-	if loaded.Directories[0].Path != "/home/user/notes" {
-		t.Errorf("Directory path = %q, want %q", loaded.Directories[0].Path, "/home/user/notes")
+	expectedChromaDir := filepath.ToSlash(filepath.Join(homeDir, ".zolam", "chromadb"))
+	if v := os.Getenv("ZOLAM_CHROMADB_DATA_DIR"); v != expectedChromaDir {
+		t.Errorf("ZOLAM_CHROMADB_DATA_DIR = %q, want %q", v, expectedChromaDir)
 	}
 }
 
-func TestAddOrUpdateDirectory(t *testing.T) {
-	cfg := &Config{}
+func TestNewConfig_EnvOverride(t *testing.T) {
+	t.Setenv("ZOLAM_CHROMADB_DATA_DIR", "/custom/chromadb")
+	defer os.Unsetenv("ZOLAM_CHROMADB_DATA_DIR")
 
-	cfg.AddOrUpdateDirectory("/home/user/notes", []string{".md"})
-	if len(cfg.Directories) != 1 {
-		t.Fatalf("expected 1 directory, got %d", len(cfg.Directories))
-	}
+	cfg := NewConfig()
 
-	cfg.AddOrUpdateDirectory("/home/user/docs", []string{".pdf"})
-	if len(cfg.Directories) != 2 {
-		t.Fatalf("expected 2 directories, got %d", len(cfg.Directories))
+	if v := os.Getenv("ZOLAM_CHROMADB_DATA_DIR"); v != "/custom/chromadb" {
+		t.Errorf("ZOLAM_CHROMADB_DATA_DIR = %q, want %q", v, "/custom/chromadb")
 	}
-
-	// Update existing
-	cfg.AddOrUpdateDirectory("/home/user/notes", []string{".md", ".txt"})
-	if len(cfg.Directories) != 2 {
-		t.Fatalf("expected 2 directories after update, got %d", len(cfg.Directories))
-	}
-	if len(cfg.Directories[0].Extensions) != 2 {
-		t.Errorf("expected 2 extensions after update, got %d", len(cfg.Directories[0].Extensions))
-	}
-}
-
-func TestRemoveDirectory(t *testing.T) {
-	cfg := &Config{
-		Directories: []DirectoryEntry{
-			{Path: "/a", Extensions: []string{".md"}},
-			{Path: "/b", Extensions: []string{".txt"}},
-			{Path: "/c", Extensions: []string{".pdf"}},
-		},
-	}
-
-	cfg.RemoveDirectory(1)
-	if len(cfg.Directories) != 2 {
-		t.Fatalf("expected 2 directories, got %d", len(cfg.Directories))
-	}
-	if cfg.Directories[0].Path != "/a" || cfg.Directories[1].Path != "/c" {
-		t.Errorf("unexpected directories after removal: %v", cfg.Directories)
-	}
-
-	// Out of bounds should be a no-op
-	cfg.RemoveDirectory(-1)
-	cfg.RemoveDirectory(5)
-	if len(cfg.Directories) != 2 {
-		t.Errorf("out-of-bounds removal changed directories")
+	// DataDir is always the zolam home, not the chromadb-specific path
+	homeDir, _ := os.UserHomeDir()
+	expectedDataDir := filepath.ToSlash(filepath.Join(homeDir, ".zolam"))
+	if cfg.DataDir != expectedDataDir {
+		t.Errorf("DataDir = %q, want %q", cfg.DataDir, expectedDataDir)
 	}
 }

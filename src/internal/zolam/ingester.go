@@ -9,7 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-"github.com/yetanotherchris/zolam/internal/docker"
+
+	"github.com/yetanotherchris/zolam/internal/docker"
 	"github.com/yetanotherchris/zolam/internal/domain"
 )
 
@@ -18,7 +19,6 @@ type IngestOptions struct {
 	Extensions     []string
 	CollectionName string
 	Reset          bool
-	Stats          bool
 }
 
 // UpdateResult summarises what changed during an update-only ingest.
@@ -31,21 +31,17 @@ type UpdateResult struct {
 
 // Ingester orchestrates the full ingest pipeline.
 type Ingester struct {
-	docker *docker.DockerClient
-	config *domain.Config
+	docker  *docker.DockerClient
+	dataDir string
 }
 
-// NewIngester creates a new Ingester backed by the given Docker client and
-// application config.
 func NewIngester(dc *docker.DockerClient, cfg *domain.Config) *Ingester {
 	return &Ingester{
-		docker: dc,
-		config: cfg,
+		docker:  dc,
+		dataDir: cfg.DataDir,
 	}
 }
 
-// runAndStream executes the command and streams its combined stdout/stderr
-// output line-by-line to outputFn.
 type streamableCmd interface {
 	StdoutPipe() (io.ReadCloser, error)
 	StderrPipe() (io.ReadCloser, error)
@@ -68,9 +64,6 @@ func runAndStream(cmd streamableCmd, outputFn func(string)) error {
 		return fmt.Errorf("starting command: %w", err)
 	}
 
-	// Read stdout and stderr concurrently so neither blocks the other.
-	// Split on \n or \r so tqdm progress bars (which use \r) are emitted
-	// as they update rather than buffered into one giant line.
 	var lastLines []string
 	var mu sync.Mutex
 
@@ -111,8 +104,6 @@ func runAndStream(cmd streamableCmd, outputFn func(string)) error {
 	return nil
 }
 
-// splitOnNewlineOrCR is a bufio.SplitFunc that splits on \n, \r\n, or \r.
-// This allows tqdm-style progress bars (which use \r) to be streamed.
 func splitOnNewlineOrCR(data []byte, atEOF bool) (advance int, token []byte, err error) {
 	if atEOF && len(data) == 0 {
 		return 0, nil, nil
@@ -122,7 +113,6 @@ func splitOnNewlineOrCR(data []byte, atEOF bool) (advance int, token []byte, err
 			return i + 1, data[:i], nil
 		}
 		if b == '\r' {
-			// \r\n counts as one line ending
 			if i+1 < len(data) && data[i+1] == '\n' {
 				return i + 2, data[:i], nil
 			}
@@ -137,7 +127,6 @@ func splitOnNewlineOrCR(data []byte, atEOF bool) (advance int, token []byte, err
 
 // Run executes a full ingest for the given directories.
 func (i *Ingester) Run(directories []string, opts IngestOptions, outputFn func(string)) error {
-	// Convert relative paths to absolute and build volume mount args.
 	var volumeArgs []string
 	var containerDirs []string
 
@@ -154,13 +143,9 @@ func (i *Ingester) Run(directories []string, opts IngestOptions, outputFn func(s
 		containerDirs = append(containerDirs, containerDir)
 	}
 
-	// Build docker run args (volumes, env vars) and container args separately.
 	var runArgs []string
 	runArgs = append(runArgs, volumeArgs...)
-
-	if opts.CollectionName != "" {
-		runArgs = append(runArgs, "-e", "COLLECTION_NAME="+opts.CollectionName)
-	}
+	runArgs = append(runArgs, "-e", "COLLECTION_NAME="+opts.CollectionName)
 
 	var containerArgs []string
 	if len(containerDirs) > 0 {
@@ -177,10 +162,6 @@ func (i *Ingester) Run(directories []string, opts IngestOptions, outputFn func(s
 		containerArgs = append(containerArgs, "--reset")
 	}
 
-	if opts.Stats {
-		containerArgs = append(containerArgs, "--stats")
-	}
-
 	cmd, err := i.docker.ComposeRun("ingest", runArgs, containerArgs)
 	if err != nil {
 		return fmt.Errorf("creating ingest command: %w", err)
@@ -189,13 +170,10 @@ func (i *Ingester) Run(directories []string, opts IngestOptions, outputFn func(s
 	return runAndStream(cmd, outputFn)
 }
 
-// manifestPath returns the path to the hash manifest file.
 func (i *Ingester) manifestPath() string {
-	return filepath.Join(i.config.DataDir, ".zolam-hashes.json")
+	return filepath.Join(i.dataDir, ".zolam-hashes.json")
 }
 
-// loadManifest reads the hash manifest from disk. If the file does not exist
-// an empty map is returned.
 func (i *Ingester) loadManifest() (map[string]string, error) {
 	data, err := os.ReadFile(i.manifestPath())
 	if err != nil {
@@ -212,7 +190,6 @@ func (i *Ingester) loadManifest() (map[string]string, error) {
 	return manifest, nil
 }
 
-// saveManifest persists the hash manifest to disk.
 func (i *Ingester) saveManifest(manifest map[string]string) error {
 	data, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
@@ -230,43 +207,32 @@ func (i *Ingester) saveManifest(manifest map[string]string) error {
 }
 
 // RunUpdateOnly performs a differential ingest: only files that have been added
-// or changed since the last run are ingested, and removed files are tracked.
-func (i *Ingester) RunUpdateOnly(directories []string, outputFn func(string)) (*UpdateResult, error) {
+// or changed since the last run are ingested.
+func (i *Ingester) RunUpdateOnly(directories []string, collection string, outputFn func(string)) (*UpdateResult, error) {
 	oldManifest, err := i.loadManifest()
 	if err != nil {
 		return nil, err
 	}
 
-	// Compute current hashes across all directories, tracking per-directory extensions.
 	newManifest := make(map[string]string)
-	dirExtensions := make(map[string][]string) // absPath -> extensions used
+	absDirectories := make([]string, 0, len(directories))
+
 	for _, dir := range directories {
 		absPath, err := filepath.Abs(dir)
 		if err != nil {
 			return nil, fmt.Errorf("resolving path %s: %w", dir, err)
 		}
+		absDirectories = append(absDirectories, absPath)
 
-		// Use per-directory extensions from config if available, otherwise supported defaults.
-		exts := domain.SupportedFileExtensions
-		for _, d := range i.config.Directories {
-			if d.Path == filepath.ToSlash(absPath) && len(d.Extensions) > 0 {
-				exts = d.Extensions
-				break
-			}
-		}
-		dirExtensions[absPath] = exts
-
-		hashes, err := HashDirectory(absPath, exts)
+		hashes, err := HashDirectory(absPath, domain.SupportedFileExtensions)
 		if err != nil {
 			return nil, fmt.Errorf("hashing directory %s: %w", absPath, err)
 		}
-
 		for k, v := range hashes {
 			newManifest[k] = v
 		}
 	}
 
-	// Diff the manifests.
 	var added, changed, removed, unchanged int
 	var filesToIngest []string
 
@@ -296,23 +262,18 @@ func (i *Ingester) RunUpdateOnly(directories []string, outputFn func(string)) (*
 		Unchanged: unchanged,
 	}
 
-	// Run ingest only on the files that changed or were added.
 	if len(filesToIngest) > 0 {
 		outputFn(fmt.Sprintf("Ingesting %d file(s): %d added, %d changed (%d unchanged, %d removed)",
 			len(filesToIngest), added, changed, unchanged, removed))
 
-		// Group changed files by their parent directory to use correct per-directory extensions.
-		dirFiles := make(map[string]bool)
+		changedDirs := make(map[string]bool)
 		for _, f := range filesToIngest {
-			dirFiles[filepath.Dir(f)] = true
+			changedDirs[filepath.Dir(f)] = true
 		}
 
-		// Match each changed-file directory back to the top-level directory it belongs to,
-		// so we use the correct extensions for the ingest run.
-		for dir, exts := range dirExtensions {
-			// Check if any changed files are under this directory.
+		for _, dir := range absDirectories {
 			hasChanges := false
-			for changedDir := range dirFiles {
+			for changedDir := range changedDirs {
 				if changedDir == dir || strings.HasPrefix(changedDir, dir+string(filepath.Separator)) {
 					hasChanges = true
 					break
@@ -323,8 +284,8 @@ func (i *Ingester) RunUpdateOnly(directories []string, outputFn func(string)) (*
 			}
 
 			opts := IngestOptions{
-				Extensions:     exts,
-				CollectionName: i.config.CollectionName,
+				Extensions:     domain.SupportedFileExtensions,
+				CollectionName: collection,
 			}
 			if err := i.Run([]string{dir}, opts, outputFn); err != nil {
 				return nil, fmt.Errorf("running ingest for %s: %w", dir, err)
@@ -334,7 +295,6 @@ func (i *Ingester) RunUpdateOnly(directories []string, outputFn func(string)) (*
 		outputFn("No changes detected, nothing to ingest.")
 	}
 
-	// Persist the updated manifest.
 	if err := i.saveManifest(newManifest); err != nil {
 		return nil, err
 	}
