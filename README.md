@@ -97,7 +97,8 @@ zolam collections remove <name>     # Delete a collection
 Register the [chroma-mcp](https://github.com/chroma-core/chroma-mcp) server with an AI provider.
 
 ```bash
-zolam mcp claude    # Register with Claude Code
+zolam mcp claude      # Register with Claude Code
+zolam mcp opencode    # Register with OpenCode
 ```
 
 ## Environment Variables
@@ -123,25 +124,10 @@ zolam mcp claude
 ### OpenCode
 
 ```bash
-opencode mcp add chroma --type local -- uvx chroma-mcp --client-type http --host localhost --port 8000 --ssl false
+zolam mcp opencode
 ```
 
-Or add manually to `~/.config/opencode/opencode.json` (global) or `./opencode.json` (project):
-
-```json
-{
-  "$schema": "https://opencode.ai/config.json",
-  "mcp": {
-    "chroma": {
-      "type": "local",
-      "command": ["uvx", "chroma-mcp", "--client-type", "http", "--host", "localhost", "--port", "8000", "--ssl", "false"],
-      "enabled": true
-    }
-  }
-}
-```
-
-Both approaches require `uv` to be installed (`brew install uv` or `pip install uv`).
+Both require `uv` to be installed (`brew install uv` or `pip install uv`).
 
 ## Building from Source
 

@@ -252,7 +252,7 @@ func newMcpCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "mcp <provider>",
 		Short: "Register chroma-mcp server with an AI provider",
-		Long:  "Register the chroma-mcp MCP server with an AI provider. Currently supports: claude.",
+		Long:  "Register the chroma-mcp MCP server with an AI provider. Supported providers: claude, opencode.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			provider := args[0]
@@ -270,8 +270,21 @@ func newMcpCmd() *cobra.Command {
 					return err
 				}
 				return nil
+			case "opencode":
+				c := exec.Command("opencode", "mcp", "add", "chroma", "--type", "local", "--",
+					"uvx", "chroma-mcp", "--client-type", "http", "--host", "localhost", "--port", "8000", "--ssl", "false")
+				c.Stdin = os.Stdin
+				c.Stdout = os.Stdout
+				c.Stderr = os.Stderr
+				if err := c.Run(); err != nil {
+					if errors.Is(err, exec.ErrNotFound) {
+						return fmt.Errorf("opencode CLI is not installed or not on PATH")
+					}
+					return err
+				}
+				return nil
 			default:
-				return fmt.Errorf("unsupported provider %q, supported: claude", provider)
+				return fmt.Errorf("unsupported provider %q, supported: claude, opencode", provider)
 			}
 		},
 	}
