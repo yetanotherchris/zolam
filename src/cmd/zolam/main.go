@@ -34,6 +34,7 @@ func main() {
 		newStatsCmd(),
 		newResetCmd(),
 		newChromaDBCmd(),
+		newCollectionsCmd(),
 		newConfigCmd(),
 		newMcpCmd(),
 	)
@@ -316,6 +317,66 @@ func newChromaDBCmd() *cobra.Command {
 		},
 	}
 
+	return cmd
+}
+
+func newCollectionsCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "collections",
+		Short: "Manage ChromaDB collections",
+	}
+
+	listCmd := &cobra.Command{
+		Use:   "list",
+		Short: "List all ChromaDB collections",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, dc, _, _, err := initServices()
+			if err != nil {
+				return err
+			}
+			if err := requireChromaDB(dc); err != nil {
+				return err
+			}
+			cols, err := dc.ListCollections()
+			if err != nil {
+				return err
+			}
+			if len(cols) == 0 {
+				fmt.Println("No collections found.")
+				return nil
+			}
+			for _, col := range cols {
+				if col.Name == cfg.CollectionName {
+					fmt.Printf("%s (default)\n", col.Name)
+				} else {
+					fmt.Println(col.Name)
+				}
+			}
+			return nil
+		},
+	}
+
+	removeCmd := &cobra.Command{
+		Use:   "remove <name>",
+		Short: "Remove a ChromaDB collection by name",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			_, dc, _, _, err := initServices()
+			if err != nil {
+				return err
+			}
+			if err := requireChromaDB(dc); err != nil {
+				return err
+			}
+			if err := dc.RemoveCollection(args[0]); err != nil {
+				return err
+			}
+			fmt.Printf("Removed collection %q.\n", args[0])
+			return nil
+		},
+	}
+
+	cmd.AddCommand(listCmd, removeCmd)
 	return cmd
 }
 

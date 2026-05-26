@@ -1,10 +1,20 @@
 package docker
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
 )
+
+const chromaBaseURL = "http://localhost:8000"
+const chromaTenant = "default_tenant"
+const chromaDatabase = "default_database"
+
+type Collection struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
 
 func (c *DockerClient) StartChromaDB() error {
 	return c.ComposeUp("chromadb")
@@ -34,6 +44,56 @@ func (c *DockerClient) WaitForChromaDB(timeout time.Duration) error {
 	}
 
 	return fmt.Errorf("chromadb did not become ready within %s", timeout)
+}
+
+func (c *DockerClient) ListCollections() ([]Collection, error) {
+	url := fmt.Sprintf("%s/api/v2/tenants/%s/databases/%s/collections", chromaBaseURL, chromaTenant, chromaDatabase)
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("chromadb returned status %d", resp.StatusCode)
+	}
+	var cols []Collection
+	if err := json.NewDecoder(resp.Body).Decode(&cols); err != nil {
+		return nil, err
+	}
+	return cols, nil
+}
+
+func (c *DockerClient) RemoveCollection(name string) error {
+	cols, err := c.ListCollections()
+	if err != nil {
+		return err
+	}
+	var id string
+	for _, col := range cols {
+		if col.Name == name {
+			id = col.ID
+			break
+		}
+	}
+	if id == "" {
+		return fmt.Errorf("collection %q not found", name)
+	}
+	url := fmt.Sprintf("%s/api/v2/tenants/%s/databases/%s/collections/%s", chromaBaseURL, chromaTenant, chromaDatabase, id)
+	req, err := http.NewRequest(http.MethodDelete, url, nil)
+	if err != nil {
+		return err
+	}
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("chromadb returned status %d", resp.StatusCode)
+	}
+	return nil
 }
 
 func (c *DockerClient) EnsureChromaDB(timeout time.Duration) error {
