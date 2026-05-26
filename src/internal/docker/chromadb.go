@@ -23,7 +23,7 @@ func (c *DockerClient) WaitForChromaDB(timeout time.Duration) error {
 	client := &http.Client{Timeout: 2 * time.Second}
 
 	for time.Now().Before(deadline) {
-		resp, err := client.Get("http://localhost:8000/api/v1/heartbeat")
+		resp, err := client.Get("http://localhost:8000/api/v2/heartbeat")
 		if err == nil {
 			resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
