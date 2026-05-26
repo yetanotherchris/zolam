@@ -76,11 +76,7 @@ func newIngestCmd() *cobra.Command {
 			opts := zolam.IngestOptions{
 				CollectionName: collection,
 				Reset:          reset,
-			}
-			if len(extensions) > 0 {
-				opts.Extensions = extensions
-			} else {
-				opts.Extensions = domain.SupportedFileExtensions
+				Extensions:     extensions,
 			}
 
 			if err := requireChromaDB(dc); err != nil {
@@ -97,6 +93,7 @@ func newIngestCmd() *cobra.Command {
 	cmd.Flags().StringVar(&collection, "collection", "", "ChromaDB collection name")
 	cmd.Flags().BoolVar(&reset, "reset", false, "Reset collection before ingesting")
 	cmd.MarkFlagRequired("collection")
+	cmd.MarkFlagRequired("extensions")
 
 	return cmd
 }
