@@ -23,18 +23,14 @@ type DirectoryEntry struct {
 }
 
 type Config struct {
-	CollectionName  string
-	RcloneSource    string
-	RcloneConfigDir string
-	DataDir         string
-	Directories     []DirectoryEntry
+	CollectionName string
+	DataDir        string
+	Directories    []DirectoryEntry
 }
 
 // configJSON mirrors the on-disk config.json with camelCase keys.
 type configJSON struct {
 	CollectionName string           `json:"collectionName,omitempty"`
-	RcloneSource   string           `json:"rcloneSource,omitempty"`
-	RcloneConfigDir string          `json:"rcloneConfigDir,omitempty"`
 	DataDir        string           `json:"dataDir,omitempty"`
 	Directories    []DirectoryEntry `json:"directories,omitempty"`
 }
@@ -89,19 +85,6 @@ func (c *Config) ChromaDir() string {
 	return filepath.ToSlash(filepath.Join(c.DataDir, "chromadb"))
 }
 
-// DownloadsDir returns the rclone downloads directory (DataDir/downloads).
-func (c *Config) DownloadsDir() string {
-	return filepath.ToSlash(filepath.Join(c.DataDir, "downloads"))
-}
-
-func defaultRcloneConfigDir() string {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return ".config/rclone"
-	}
-	return filepath.ToSlash(filepath.Join(homeDir, ".config", "rclone"))
-}
-
 // configPathOverride allows tests to redirect config.json to a temp file.
 var configPathOverride string
 
@@ -144,9 +127,8 @@ func loadConfigJSON(path string) (configJSON, error) {
 func LoadConfig() (*Config, []string, error) {
 	// 1. Start with defaults
 	cfg := &Config{
-		CollectionName:  "my-notes",
-		RcloneConfigDir: defaultRcloneConfigDir(),
-		DataDir:         defaultDataDir(),
+		CollectionName: "my-notes",
+		DataDir:        defaultDataDir(),
 	}
 
 	// 2. Overlay config.json
@@ -156,12 +138,6 @@ func LoadConfig() (*Config, []string, error) {
 	}
 	if cj.CollectionName != "" {
 		cfg.CollectionName = cj.CollectionName
-	}
-	if cj.RcloneSource != "" {
-		cfg.RcloneSource = cj.RcloneSource
-	}
-	if cj.RcloneConfigDir != "" {
-		cfg.RcloneConfigDir = cj.RcloneConfigDir
 	}
 	if cj.DataDir != "" {
 		cfg.DataDir = cj.DataDir
@@ -176,12 +152,6 @@ func LoadConfig() (*Config, []string, error) {
 	// 4. Env vars override everything except CLI flags
 	if v := os.Getenv("COLLECTION_NAME"); v != "" {
 		cfg.CollectionName = v
-	}
-	if v := os.Getenv("RCLONE_SOURCE"); v != "" {
-		cfg.RcloneSource = v
-	}
-	if v := os.Getenv("RCLONE_CONFIG_DIR"); v != "" {
-		cfg.RcloneConfigDir = v
 	}
 	if v := os.Getenv("ZOLAM_DATA_DIR"); v != "" {
 		cfg.DataDir = v
@@ -201,11 +171,9 @@ func LoadConfig() (*Config, []string, error) {
 // SaveConfig persists the current configuration to ~/.zolam/config.json.
 func SaveConfig(cfg *Config) error {
 	cj := configJSON{
-		CollectionName:  cfg.CollectionName,
-		RcloneSource:    cfg.RcloneSource,
-		RcloneConfigDir: cfg.RcloneConfigDir,
-		DataDir:         cfg.DataDir,
-		Directories:     cfg.Directories,
+		CollectionName: cfg.CollectionName,
+		DataDir:        cfg.DataDir,
+		Directories:    cfg.Directories,
 	}
 
 	data, err := json.MarshalIndent(cj, "", "  ")
@@ -225,12 +193,6 @@ func SaveConfig(cfg *Config) error {
 func (c *Config) MergeFlags(flags map[string]string) {
 	if v, ok := flags["collection-name"]; ok && v != "" {
 		c.CollectionName = v
-	}
-	if v, ok := flags["rclone-source"]; ok && v != "" {
-		c.RcloneSource = v
-	}
-	if v, ok := flags["rclone-config-dir"]; ok && v != "" {
-		c.RcloneConfigDir = filepath.ToSlash(v)
 	}
 	if v, ok := flags["data-dir"]; ok && v != "" {
 		c.DataDir = v

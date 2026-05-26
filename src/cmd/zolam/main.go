@@ -9,8 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/term"
-
 	"github.com/spf13/cobra"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yetanotherchris/zolam/internal/docker"
@@ -33,7 +31,6 @@ func main() {
 	rootCmd.AddCommand(
 		newIngestCmd(),
 		newUpdateCmd(),
-		newDownloadCmd(),
 		newStatsCmd(),
 		newResetCmd(),
 		newChromaDBCmd(),
@@ -185,64 +182,6 @@ func newUpdateCmd() *cobra.Command {
 			return nil
 		},
 	}
-}
-
-func newDownloadCmd() *cobra.Command {
-	var source string
-	var dest string
-	var configDir string
-
-	cmd := &cobra.Command{
-		Use:   "download",
-		Short: "Download files from Google Drive via rclone",
-		Long:  "Use rclone Docker container to download files from a configured remote.",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, dc, _, _, err := initServices()
-			if err != nil {
-				return err
-			}
-
-			if source == "" {
-				source = cfg.RcloneSource
-			}
-			if dest == "" {
-				dest = cfg.DownloadsDir()
-			}
-			if configDir == "" {
-				configDir = cfg.RcloneConfigDir
-			} else {
-				configDir = filepath.ToSlash(configDir)
-			}
-
-			if source == "" {
-				return fmt.Errorf("RCLONE_SOURCE is required (--source flag or RCLONE_SOURCE env var)")
-			}
-
-			configPass := os.Getenv("RCLONE_CONFIG_PASS")
-			if configPass == "" {
-				fmt.Fprint(os.Stderr, "Rclone config password: ")
-				passBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
-				fmt.Fprintln(os.Stderr)
-				if err != nil {
-					return fmt.Errorf("failed to read password: %w", err)
-				}
-				configPass = string(passBytes)
-			}
-
-			rcCmd, err := dc.RcloneCopy(source, dest, configDir, configPass)
-			if err != nil {
-				return err
-			}
-
-			return dc.StreamOutput(rcCmd, os.Stdout)
-		},
-	}
-
-	cmd.Flags().StringVar(&source, "source", "", "rclone source (e.g. gdrive:/path/to/folder)")
-	cmd.Flags().StringVar(&dest, "dest", "", "Local destination directory")
-	cmd.Flags().StringVar(&configDir, "config-dir", "", "rclone config directory (default: ~/.config/rclone)")
-
-	return cmd
 }
 
 func newStatsCmd() *cobra.Command {
@@ -422,11 +361,9 @@ func newConfigCmd() *cobra.Command {
 
 			fmt.Println("Current Configuration:")
 			fmt.Println("─────────────────────")
-			fmt.Printf("Config file:         %s\n", domain.ConfigPath())
-			fmt.Printf("Collection Name:     %s\n", cfg.CollectionName)
-			fmt.Printf("Zolam Directory:     %s\n", cfg.DataDir)
-			fmt.Printf("rclone Source:       %s\n", cfg.RcloneSource)
-			fmt.Printf("rclone Config Dir:   %s\n", cfg.RcloneConfigDir)
+			fmt.Printf("Config file:     %s\n", domain.ConfigPath())
+			fmt.Printf("Collection Name: %s\n", cfg.CollectionName)
+			fmt.Printf("Zolam Directory: %s\n", cfg.DataDir)
 
 			if len(cfg.Directories) > 0 {
 				fmt.Println("\nIngested directories:")

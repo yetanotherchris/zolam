@@ -15,7 +15,6 @@ type MenuItem struct {
 var menuItems = []MenuItem{
 	{Name: "Ingest", Description: "Run the full ingestion pipeline"},
 	{Name: "Update Only", Description: "Re-ingest only changed files"},
-	{Name: "Download (rclone)", Description: "Download files from Google Drive"},
 	{Name: "Stats", Description: "Show collection statistics"},
 	{Name: "Reset Collection", Description: "Delete and recreate collection"},
 	{Name: "Start ChromaDB", Description: "Start the ChromaDB container"},

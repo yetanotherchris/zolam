@@ -12,11 +12,7 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	configPathOverride = filepath.Join(t.TempDir(), "config.json")
 	t.Cleanup(func() { configPathOverride = "" })
 
-	for _, key := range []string{
-		"COLLECTION_NAME",
-		"RCLONE_SOURCE",
-		"RCLONE_CONFIG_DIR", "ZOLAM_DATA_DIR",
-	} {
+	for _, key := range []string{"COLLECTION_NAME", "ZOLAM_DATA_DIR"} {
 		t.Setenv(key, "")
 	}
 
@@ -36,10 +32,6 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	if envVal := os.Getenv("ZOLAM_DATA_DIR"); envVal != expectedDataDir {
 		t.Errorf("ZOLAM_DATA_DIR env = %q, want %q", envVal, expectedDataDir)
 	}
-	expectedRcloneConfigDir := filepath.ToSlash(filepath.Join(homeDir, ".config", "rclone"))
-	if cfg.RcloneConfigDir != expectedRcloneConfigDir {
-		t.Errorf("RcloneConfigDir = %q, want %q", cfg.RcloneConfigDir, expectedRcloneConfigDir)
-	}
 }
 
 func TestLoadConfig_EnvVars(t *testing.T) {
@@ -47,8 +39,6 @@ func TestLoadConfig_EnvVars(t *testing.T) {
 	t.Cleanup(func() { configPathOverride = "" })
 
 	t.Setenv("COLLECTION_NAME", "test-collection")
-	t.Setenv("RCLONE_SOURCE", "")
-	t.Setenv("RCLONE_CONFIG_DIR", "")
 	t.Setenv("ZOLAM_DATA_DIR", "")
 
 	cfg, _, err := LoadConfig()
@@ -63,15 +53,13 @@ func TestLoadConfig_EnvVars(t *testing.T) {
 
 func TestMergeFlags(t *testing.T) {
 	cfg := &Config{
-		CollectionName:  "original",
-		DataDir:         "/original/path",
-		RcloneConfigDir: "/original/rclone",
+		CollectionName: "original",
+		DataDir:        "/original/path",
 	}
 
 	flags := map[string]string{
-		"collection-name":   "overridden-collection",
-		"data-dir":          "/new/path",
-		"rclone-config-dir": "/new/rclone/config",
+		"collection-name": "overridden-collection",
+		"data-dir":        "/new/path",
 	}
 
 	cfg.MergeFlags(flags)
@@ -81,9 +69,6 @@ func TestMergeFlags(t *testing.T) {
 	}
 	if cfg.DataDir != "/new/path" {
 		t.Errorf("DataDir = %q, want %q", cfg.DataDir, "/new/path")
-	}
-	if cfg.RcloneConfigDir != "/new/rclone/config" {
-		t.Errorf("RcloneConfigDir = %q, want %q", cfg.RcloneConfigDir, "/new/rclone/config")
 	}
 
 	cfg.MergeFlags(map[string]string{"collection-name": ""})
@@ -108,10 +93,8 @@ func TestConfigJSON_LoadSave(t *testing.T) {
 	path := filepath.Join(tmpDir, "config.json")
 
 	cfg := &Config{
-		CollectionName:  "test-col",
-		RcloneSource:    "gdrive:docs",
-		RcloneConfigDir: "/home/user/.config/rclone",
-		DataDir:         "/home/user/.zolam",
+		CollectionName: "test-col",
+		DataDir:        "/home/user/.zolam",
 		Directories: []DirectoryEntry{
 			{Path: "/home/user/notes", Extensions: []string{".md", ".txt"}},
 		},
@@ -119,11 +102,9 @@ func TestConfigJSON_LoadSave(t *testing.T) {
 
 	// Write config via the JSON format directly (simulating SaveConfig)
 	cj := configJSON{
-		CollectionName:  cfg.CollectionName,
-		RcloneSource:    cfg.RcloneSource,
-		RcloneConfigDir: cfg.RcloneConfigDir,
-		DataDir:         cfg.DataDir,
-		Directories:     cfg.Directories,
+		CollectionName: cfg.CollectionName,
+		DataDir:        cfg.DataDir,
+		Directories:    cfg.Directories,
 	}
 	data, err := json.MarshalIndent(cj, "", "  ")
 	if err != nil {
