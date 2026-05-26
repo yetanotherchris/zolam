@@ -1,6 +1,10 @@
 # zolam
 
-Ingest your personal files (PDF, Markdown, Docx, Txt, code) into ChromaDB for semantic search in Claude.
+Ingest your personal files (PDF, Markdown, Docx, Txt, code) into ChromaDB for semantic search in Claude. 
+
+Zolam is two parts:
+ - A CLI tool which manages ingestion and the ChromaDB docker container.
+ - A standalone Docker images which performs the ingestion into ChromaDb using Python.
 
 ## Quick Start
 
