@@ -9,7 +9,6 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/yetanotherchris/zolam/internal/docker"
-	"github.com/yetanotherchris/zolam/internal/domain"
 	"github.com/yetanotherchris/zolam/internal/zolam"
 )
 
@@ -46,7 +45,10 @@ func requireChromaDB(dc *docker.DockerClient) error {
 }
 
 func initServices() (*docker.DockerClient, *zolam.Ingester, error) {
-	domain.NewConfig()
+	if _, exists := os.LookupEnv("ZOLAM_CHROMADB_DATA_DIR"); !exists {
+		homeDir, _ := os.UserHomeDir()
+		os.Setenv("ZOLAM_CHROMADB_DATA_DIR", homeDir+"/.zolam/chromadb")
+	}
 
 	dc, err := docker.NewDockerClient()
 	if err != nil {

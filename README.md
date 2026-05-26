@@ -13,7 +13,7 @@ zolam chromadb start
 # Ingest files into a named collection
 zolam ingest ~/notes --collection my-project --extensions .md,.txt
 
-# Re-ingest only changed files (zolam-file-hashes.json is created in the current directory)
+# zolam-file-hashes.json is stored after files are ingested, so update only processes changed files
 zolam update ~/notes --collection my-project
 
 # Register the MCP server so Claude can search your files

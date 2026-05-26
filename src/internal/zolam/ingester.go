@@ -11,7 +11,6 @@ import (
 	"sync"
 
 	"github.com/yetanotherchris/zolam/internal/docker"
-	"github.com/yetanotherchris/zolam/internal/domain"
 )
 
 // IngestOptions holds the flags that control an ingest run.
@@ -216,7 +215,7 @@ func (i *Ingester) RunUpdateOnly(directories []string, collection string, hashes
 		}
 		absDirectories = append(absDirectories, absPath)
 
-		hashes, err := HashDirectory(absPath, domain.SupportedFileExtensions)
+		hashes, err := HashDirectory(absPath, SupportedFileExtensions)
 		if err != nil {
 			return nil, fmt.Errorf("hashing directory %s: %w", absPath, err)
 		}
@@ -276,7 +275,7 @@ func (i *Ingester) RunUpdateOnly(directories []string, collection string, hashes
 			}
 
 			opts := IngestOptions{
-				Extensions:     domain.SupportedFileExtensions,
+				Extensions:     SupportedFileExtensions,
 				CollectionName: collection,
 			}
 			if err := i.Run([]string{dir}, opts, outputFn); err != nil {
