@@ -2,11 +2,8 @@ name: Build and Push Docker Image
 
 on:
   push:
-    branches: [main]
-    paths:
-      - "Dockerfile"
-      - "ingest.py"
-      - ".github/workflows/docker-publish.yml"
+    tags:
+      - "v*.*.*"
   workflow_dispatch:
 
 env:
@@ -37,8 +34,9 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=sha
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v6

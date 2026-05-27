@@ -111,7 +111,9 @@ jobs:
           generate_release_notes: true
 
       - name: Switch to main branch
-        run: git checkout main
+        run: |
+          git checkout main
+          git pull --rebase origin main
 
       - name: Update Scoop manifest
         shell: pwsh
