@@ -86,6 +86,18 @@ jobs:
     if: github.ref_type == 'tag'
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine version
+        id: version
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -97,4 +109,17 @@ jobs:
         with:
           files: artifacts/*
           generate_release_notes: true
+
+      - name: Switch to main branch
+        run: git checkout main
+
+      - name: Update Scoop manifest
+        shell: pwsh
+        run: ./updatescoop.ps1 -Version ${{ steps.version.outputs.VERSION }}
+
+      - name: Commit updated Scoop manifest
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: update scoop manifest to ${{ github.ref_name }}"
+          file_pattern: zolam.json
 
