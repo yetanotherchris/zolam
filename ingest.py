@@ -81,8 +81,11 @@ def extract_text(filepath: Path) -> str | None:
                 for page_num, page_text in enumerate(pdftotext_pages):
                     if not page_text.strip():
                         if fitz_doc is None:
-                            fitz_doc = fitz.open(str(filepath))
-                        if page_num < fitz_doc.page_count:
+                            try:
+                                fitz_doc = fitz.open(str(filepath))
+                            except Exception as fitz_err:
+                                tqdm.write(f"  Cannot open for OCR {filepath}: {fitz_err}")
+                        if fitz_doc is not None and page_num < fitz_doc.page_count:
                             fitz_page = fitz_doc[page_num]
                             try:
                                 page_text = fitz_page.get_text(textpage=fitz_page.get_textpage_ocr(language="eng"))
