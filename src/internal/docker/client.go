@@ -57,6 +57,9 @@ func NewDockerClient() (*DockerClient, error) {
 		return nil, fmt.Errorf("failed to read embedded compose.yml: %w", err)
 	}
 
+	chromadbDir := filepath.ToSlash(filepath.Join(zolamDir, "chromadb"))
+	data = []byte(strings.ReplaceAll(string(data), ":-./chromadb}", ":-"+chromadbDir+"}"))
+
 	existing, readErr := os.ReadFile(composePath)
 	if readErr != nil || string(existing) != string(data) {
 		if readErr == nil {
