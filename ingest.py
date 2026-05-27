@@ -64,9 +64,18 @@ def extract_text(filepath: Path) -> str | None:
         try:
             import fitz  # pymupdf
             doc = fitz.open(str(filepath))
-            text = "\n".join(page.get_text() for page in doc)
+            pages = []
+            for page in doc:
+                text = page.get_text()
+                if not text.strip():
+                    try:
+                        text = page.get_text(textpage=page.get_textpage_ocr(language="eng"))
+                    except Exception as ocr_err:
+                        tqdm.write(f"  OCR failed {filepath} page {page.number}: {ocr_err}")
+                pages.append(text)
             doc.close()
-            return text if text.strip() else None
+            full_text = "\n".join(pages)
+            return full_text if full_text.strip() else None
         except Exception as e:
             tqdm.write(f"  SKIP {filepath}: {e}")
             return None
