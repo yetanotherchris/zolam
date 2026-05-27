@@ -28,6 +28,7 @@ import argparse
 import hashlib
 import os
 import re
+import subprocess
 from pathlib import Path
 
 import chromadb
@@ -63,10 +64,37 @@ def extract_text(filepath: Path) -> str | None:
     if ext == ".pdf":
         try:
             import fitz  # pymupdf
-            doc = fitz.open(str(filepath))
-            text = "\n".join(page.get_text() for page in doc)
-            doc.close()
-            return text if text.strip() else None
+
+            # pdftotext (poppler) extracts text layer; output is form-feed-separated pages
+            result = subprocess.run(
+                ["pdftotext", str(filepath), "-"],
+                capture_output=True, text=True
+            )
+            pdftotext_pages = result.stdout.split("\x0c")
+            # pdftotext appends a trailing form feed, producing a spurious empty final entry
+            if pdftotext_pages and not pdftotext_pages[-1].strip():
+                pdftotext_pages = pdftotext_pages[:-1]
+
+            fitz_doc = None
+            pages = []
+            try:
+                for page_num, page_text in enumerate(pdftotext_pages):
+                    if not page_text.strip():
+                        if fitz_doc is None:
+                            fitz_doc = fitz.open(str(filepath))
+                        if page_num < fitz_doc.page_count:
+                            fitz_page = fitz_doc[page_num]
+                            try:
+                                page_text = fitz_page.get_text(textpage=fitz_page.get_textpage_ocr(language="eng"))
+                            except Exception as ocr_err:
+                                tqdm.write(f"  OCR failed {filepath} page {page_num}: {ocr_err}")
+                    pages.append(page_text)
+            finally:
+                if fitz_doc:
+                    fitz_doc.close()
+
+            full_text = "\n".join(pages)
+            return full_text if full_text.strip() else None
         except Exception as e:
             tqdm.write(f"  SKIP {filepath}: {e}")
             return None

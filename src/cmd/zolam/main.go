@@ -1,10 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -13,6 +15,60 @@ import (
 )
 
 var version = "dev"
+
+func registerOpencodeMCP() error {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("getting home directory: %w", err)
+	}
+
+	configPath := filepath.Join(homeDir, ".config", "opencode", "opencode.jsonc")
+
+	var config map[string]any
+	data, err := os.ReadFile(configPath)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("reading opencode config: %w", err)
+	}
+
+	if len(data) > 0 {
+		if err := json.Unmarshal(data, &config); err != nil {
+			return fmt.Errorf("parsing opencode config at %s: %w\nIf the file contains JSONC comments, add the mcp entry manually:\n  \"mcp\": { \"chroma\": { \"type\": \"local\", \"command\": [\"uvx\", \"chroma-mcp\", \"--client-type\", \"http\", \"--host\", \"localhost\", \"--port\", \"8000\", \"--ssl\", \"false\"] } }", configPath, err)
+		}
+	} else {
+		config = make(map[string]any)
+	}
+
+	mcp, _ := config["mcp"].(map[string]any)
+	if mcp == nil {
+		mcp = make(map[string]any)
+	}
+	mcp["chroma"] = map[string]any{
+		"type":    "local",
+		"command": []string{"uvx", "chroma-mcp", "--client-type", "http", "--host", "localhost", "--port", "8000", "--ssl", "false"},
+	}
+	config["mcp"] = mcp
+
+	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
+		return fmt.Errorf("creating opencode config directory: %w", err)
+	}
+
+	out, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return fmt.Errorf("serializing opencode config: %w", err)
+	}
+
+	tmpPath := configPath + ".tmp"
+	if err := os.WriteFile(tmpPath, out, 0644); err != nil {
+		return fmt.Errorf("writing opencode config: %w", err)
+	}
+	if err := os.Rename(tmpPath, configPath); err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("finalizing opencode config: %w", err)
+	}
+
+	fmt.Printf("Registered chroma-mcp in %s\n", configPath)
+	return nil
+}
 
 func main() {
 	rootCmd := &cobra.Command{
@@ -271,18 +327,7 @@ func newMcpCmd() *cobra.Command {
 				}
 				return nil
 			case "opencode":
-				c := exec.Command("opencode", "mcp", "add", "chroma", "--type", "local", "--",
-					"uvx", "chroma-mcp", "--client-type", "http", "--host", "localhost", "--port", "8000", "--ssl", "false")
-				c.Stdin = os.Stdin
-				c.Stdout = os.Stdout
-				c.Stderr = os.Stderr
-				if err := c.Run(); err != nil {
-					if errors.Is(err, exec.ErrNotFound) {
-						return fmt.Errorf("opencode CLI is not installed or not on PATH")
-					}
-					return err
-				}
-				return nil
+				return registerOpencodeMCP()
 			default:
 				return fmt.Errorf("unsupported provider %q, supported: claude, opencode", provider)
 			}
