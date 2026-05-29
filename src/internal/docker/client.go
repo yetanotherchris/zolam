@@ -98,6 +98,13 @@ func (c *DockerClient) ComposeDown() error {
 	return cmd.Run()
 }
 
+func (c *DockerClient) ComposePull(service string) error {
+	cmd := c.composeCmd("pull", service)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
 func (c *DockerClient) ComposeRun(service string, runArgs []string, containerArgs []string) (*exec.Cmd, error) {
 	cmdArgs := []string{"run", "--rm"}
 	cmdArgs = append(cmdArgs, runArgs...)

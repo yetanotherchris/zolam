@@ -155,6 +155,10 @@ func (i *Ingester) Run(directories []string, opts IngestOptions, outputFn func(s
 		containerArgs = append(containerArgs, "--reset")
 	}
 
+	if err := i.docker.ComposePull("ingest"); err != nil {
+		return fmt.Errorf("pulling ingest image: %w", err)
+	}
+
 	cmd, err := i.docker.ComposeRun("ingest", runArgs, containerArgs)
 	if err != nil {
 		return fmt.Errorf("creating ingest command: %w", err)

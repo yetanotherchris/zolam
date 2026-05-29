@@ -76,17 +76,17 @@ func (c *DockerClient) RemoveCollection(name string) error {
 	if err != nil {
 		return err
 	}
-	var id string
+	found := false
 	for _, col := range cols {
 		if col.Name == name {
-			id = col.ID
+			found = true
 			break
 		}
 	}
-	if id == "" {
+	if !found {
 		return fmt.Errorf("collection %q not found", name)
 	}
-	url := fmt.Sprintf("%s/api/v2/tenants/%s/databases/%s/collections/%s", chromaBaseURL, chromaTenant, chromaDatabase, id)
+	url := fmt.Sprintf("%s/api/v2/tenants/%s/databases/%s/collections/%s", chromaBaseURL, chromaTenant, chromaDatabase, name)
 	req, err := http.NewRequest(http.MethodDelete, url, nil)
 	if err != nil {
 		return err
