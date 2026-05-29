@@ -185,19 +185,19 @@ func newIngestCmd() *cobra.Command {
 				return fmt.Errorf("no directories specified")
 			}
 
-			opts := zolam.IngestOptions{
-				CollectionName: collection,
-				Reset:          reset,
-				Extensions:     exts,
-			}
-
 			if err := requireChromaDB(dc); err != nil {
 				return err
 			}
 
-			return ing.Run(dirs, opts, func(line string) {
+			result, err := ing.RunSync(dirs, collection, exts, reset, func(line string) {
 				fmt.Println(line)
 			})
+			if err != nil {
+				return err
+			}
+			fmt.Printf("\nSync complete: %d new, %d changed, %d removed, %d unchanged\n",
+				result.Added, result.Changed, result.Removed, result.Unchanged)
+			return nil
 		},
 	}
 
@@ -228,7 +228,7 @@ func newUpdateCmd() *cobra.Command {
 				return err
 			}
 
-			result, err := ing.RunUpdateOnly(args, collection, func(line string) {
+			result, err := ing.RunSync(args, collection, nil, false, func(line string) {
 				fmt.Println(line)
 			})
 			if err != nil {
@@ -352,7 +352,37 @@ func newCollectionsCmd() *cobra.Command {
 		},
 	}
 
-	cmd.AddCommand(listCmd, removeCmd)
+	removeFileCmd := &cobra.Command{
+		Use:   "remove-file <collection> <file>",
+		Short: "Remove all chunks for a file from a collection",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			collection, fileName := args[0], args[1]
+			dc, _, err := initServices()
+			if err != nil {
+				return err
+			}
+			if err := requireChromaDB(dc); err != nil {
+				return err
+			}
+			n, err := dc.DeleteFile(collection, fileName)
+			if err != nil {
+				return err
+			}
+			store, err := zolam.OpenHashStore(collection)
+			if err != nil {
+				return err
+			}
+			defer store.Close()
+			if err := store.DeleteFile(fileName); err != nil {
+				return err
+			}
+			fmt.Printf("Removed %d chunk(s) for %q from collection %q.\n", n, fileName, collection)
+			return nil
+		},
+	}
+
+	cmd.AddCommand(listCmd, removeCmd, removeFileCmd)
 	return cmd
 }
 

@@ -166,8 +166,12 @@ def compute_file_hash(filepath: Path) -> str:
     return h.hexdigest()
 
 
-def ingest_source(collection, source_name: str, source_config: dict) -> int:
-    """Ingest all matching files from a source directory. Returns chunk count."""
+def ingest_source(collection, source_name: str, source_config: dict, specific_files: set | None = None) -> int:
+    """Ingest matching files from a source directory. Returns chunk count.
+
+    When specific_files is provided only those paths are processed; otherwise
+    all files matching the configured extensions are walked.
+    """
     base_path = Path(source_config["path"])
     extensions = source_config["extensions"]
 
@@ -176,9 +180,12 @@ def ingest_source(collection, source_name: str, source_config: dict) -> int:
         return 0
 
     count = 0
-    files = []
-    for ext in extensions:
-        files.extend(base_path.rglob(f"*{ext}"))
+    if specific_files is not None:
+        files = [p for p in (Path(f) for f in specific_files) if p.is_relative_to(base_path)]
+    else:
+        files = []
+        for ext in extensions:
+            files.extend(base_path.rglob(f"*{ext}"))
     total_files = len(files)
     print(f"  Found {total_files} files")
 
@@ -226,6 +233,9 @@ def main():
     parser = argparse.ArgumentParser(description="Ingest files into ChromaDB")
     parser.add_argument("--directory", nargs="+", metavar="DIR",
                         help="One or more directories to ingest (recursively)")
+    parser.add_argument("--files", nargs="*", metavar="FILE",
+                        help="Specific files to process (full container paths). "
+                             "When set, only these files are ingested from their --directory source.")
     parser.add_argument("--extensions", nargs="+", metavar="EXT",
                         help="File extensions to include (e.g. .md .txt .pdf). "
                              "Default: all supported extensions")
@@ -262,6 +272,8 @@ def main():
     extensions = args.extensions if args.extensions else SUPPORTED_EXTENSIONS
     extensions = [ext if ext.startswith(".") else f".{ext}" for ext in extensions]
 
+    specific_files = set(Path(f) for f in args.files) if args.files else None
+
     collection = client.get_or_create_collection(name=collection_name)
 
     total = 0
@@ -270,7 +282,7 @@ def main():
         source_label = resolved.name
         config = {"path": str(resolved), "extensions": extensions}
         print(f"\nIngesting [{source_label}] into collection '{collection_name}' from {resolved}")
-        count = ingest_source(collection, source_label, config)
+        count = ingest_source(collection, source_label, config, specific_files=specific_files)
         print(f"  Ingested {count} chunks")
         total += count
 
