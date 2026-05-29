@@ -11,14 +11,17 @@ import (
 	"github.com/yetanotherchris/zolam/internal/docker"
 )
 
-// IngestOptions holds the flags that control an ingest run.
+// IngestOptions holds the flags that control a Docker ingest run.
 type IngestOptions struct {
 	Extensions     []string
 	CollectionName string
 	Reset          bool
+	// Files, when non-nil, restricts ingestion to these specific host absolute
+	// paths. Each path must fall under one of the mounted directories.
+	Files []string
 }
 
-// UpdateResult summarises what changed during an update-only ingest.
+// UpdateResult summarises what changed during a sync.
 type UpdateResult struct {
 	Added     int
 	Changed   int
@@ -118,41 +121,61 @@ func splitOnNewlineOrCR(data []byte, atEOF bool) (advance int, token []byte, err
 	return 0, nil, nil
 }
 
-// Run executes a full ingest for the given directories.
+type dirMount struct {
+	absPath      string
+	containerDir string
+}
+
+// Run calls Docker to ingest files. When opts.Files is set, only those specific
+// files are passed to the container via --files; otherwise the full directory is
+// processed.
 func (i *Ingester) Run(directories []string, opts IngestOptions, outputFn func(string)) error {
-	var volumeArgs []string
-	var containerDirs []string
+	var mounts []dirMount
+	var volumeArgs, containerDirs []string
 
 	for _, dir := range directories {
 		absPath, err := filepath.Abs(dir)
 		if err != nil {
 			return fmt.Errorf("resolving path %s: %w", dir, err)
 		}
-
 		base := filepath.Base(absPath)
 		containerDir := "/sources/" + base
-
+		mounts = append(mounts, dirMount{absPath, containerDir})
 		volumeArgs = append(volumeArgs, "-v", filepath.ToSlash(absPath)+":"+containerDir)
 		containerDirs = append(containerDirs, containerDir)
 	}
 
-	var runArgs []string
-	runArgs = append(runArgs, volumeArgs...)
-	runArgs = append(runArgs, "-e", "COLLECTION_NAME="+opts.CollectionName)
+	runArgs := append(volumeArgs, "-e", "COLLECTION_NAME="+opts.CollectionName)
 
 	var containerArgs []string
 	if len(containerDirs) > 0 {
 		containerArgs = append(containerArgs, "--directory")
 		containerArgs = append(containerArgs, containerDirs...)
 	}
-
 	if len(opts.Extensions) > 0 {
 		containerArgs = append(containerArgs, "--extensions")
 		containerArgs = append(containerArgs, opts.Extensions...)
 	}
-
 	if opts.Reset {
 		containerArgs = append(containerArgs, "--reset")
+	}
+
+	if len(opts.Files) > 0 {
+		var containerFiles []string
+		sep := string(filepath.Separator)
+		for _, hostFile := range opts.Files {
+			for _, m := range mounts {
+				if strings.HasPrefix(hostFile, m.absPath+sep) {
+					rel := hostFile[len(m.absPath):]
+					containerFiles = append(containerFiles, m.containerDir+filepath.ToSlash(rel))
+					break
+				}
+			}
+		}
+		if len(containerFiles) > 0 {
+			containerArgs = append(containerArgs, "--files")
+			containerArgs = append(containerArgs, containerFiles...)
+		}
 	}
 
 	if err := i.docker.ComposePull("ingest"); err != nil {
@@ -167,38 +190,47 @@ func (i *Ingester) Run(directories []string, opts IngestOptions, outputFn func(s
 	return runAndStream(cmd, outputFn)
 }
 
-// RunUpdateOnly performs a differential ingest: only files that have been added
-// or changed since the last run are ingested. File hashes are read from and
-// written to ChromaDB document metadata rather than a local file.
-func (i *Ingester) RunUpdateOnly(directories []string, collection string, outputFn func(string)) (*UpdateResult, error) {
-	records, err := i.docker.GetFileHashes(collection)
+// RunSync performs a hash-aware sync: hashes files on disk, compares against
+// the local hash store (~/.zolam/hashes.db), and passes only new or changed
+// files to Docker. Both zolam ingest and zolam update call this.
+//
+// extensions controls which file types are considered; nil uses SupportedFileExtensions.
+// When reset is true the hash store and ChromaDB collection are both cleared before ingesting.
+func (i *Ingester) RunSync(directories []string, collection string, extensions []string, reset bool, outputFn func(string)) (*UpdateResult, error) {
+	store, err := OpenHashStore(collection)
 	if err != nil {
-		return nil, fmt.Errorf("querying file hashes: %w", err)
+		return nil, fmt.Errorf("opening hash store: %w", err)
+	}
+	defer store.Close()
+
+	if reset {
+		if err := store.DeleteCollection(); err != nil {
+			return nil, fmt.Errorf("clearing hash store: %w", err)
+		}
 	}
 
 	absDirectories := make([]string, 0, len(directories))
-	sourceDirMap := make(map[string]string)
 	for _, dir := range directories {
 		absPath, err := filepath.Abs(dir)
 		if err != nil {
 			return nil, fmt.Errorf("resolving path %s: %w", dir, err)
 		}
 		absDirectories = append(absDirectories, absPath)
-		sourceDirMap[filepath.Base(absPath)] = absPath
 	}
 
-	oldHashes := make(map[string]string, len(records))
-	for _, r := range records {
-		absDir, ok := sourceDirMap[r.Source]
-		if !ok {
-			continue
-		}
-		oldHashes[filepath.Join(absDir, filepath.FromSlash(r.File))] = r.Hash
+	exts := extensions
+	if len(exts) == 0 {
+		exts = SupportedFileExtensions
+	}
+
+	oldHashes, err := store.GetAll()
+	if err != nil {
+		return nil, fmt.Errorf("reading hash store: %w", err)
 	}
 
 	newHashes := make(map[string]string)
 	for _, absPath := range absDirectories {
-		hashes, err := HashDirectory(absPath, SupportedFileExtensions)
+		hashes, err := HashDirectory(absPath, exts)
 		if err != nil {
 			return nil, fmt.Errorf("hashing directory %s: %w", absPath, err)
 		}
@@ -210,59 +242,63 @@ func (i *Ingester) RunUpdateOnly(directories []string, collection string, output
 	var added, changed, removed, unchanged int
 	var filesToIngest []string
 
-	for path, newHash := range newHashes {
-		oldHash, exists := oldHashes[path]
-		if !exists {
-			added++
+	if reset {
+		for path := range newHashes {
 			filesToIngest = append(filesToIngest, path)
-		} else if oldHash != newHash {
-			changed++
-			filesToIngest = append(filesToIngest, path)
-		} else {
-			unchanged++
+		}
+		added = len(filesToIngest)
+	} else {
+		for path, newHash := range newHashes {
+			oldHash, exists := oldHashes[path]
+			if !exists {
+				added++
+				filesToIngest = append(filesToIngest, path)
+			} else if oldHash != newHash {
+				changed++
+				filesToIngest = append(filesToIngest, path)
+			} else {
+				unchanged++
+			}
+		}
+		for path := range oldHashes {
+			if _, exists := newHashes[path]; !exists {
+				removed++
+			}
 		}
 	}
 
-	for path := range oldHashes {
-		if _, exists := newHashes[path]; !exists {
-			removed++
-		}
-	}
-
-	result := &UpdateResult{
-		Added:     added,
-		Changed:   changed,
-		Removed:   removed,
-		Unchanged: unchanged,
-	}
+	result := &UpdateResult{Added: added, Changed: changed, Removed: removed, Unchanged: unchanged}
 
 	if len(filesToIngest) > 0 {
-		outputFn(fmt.Sprintf("Ingesting %d file(s): %d added, %d changed (%d unchanged, %d removed)",
-			len(filesToIngest), added, changed, unchanged, removed))
-
-		changedDirs := make(map[string]bool)
-		for _, f := range filesToIngest {
-			changedDirs[filepath.Dir(f)] = true
+		if !reset {
+			outputFn(fmt.Sprintf("Ingesting %d file(s): %d added, %d changed (%d unchanged, %d removed)",
+				len(filesToIngest), added, changed, unchanged, removed))
 		}
 
-		for _, dir := range absDirectories {
-			hasChanges := false
-			for changedDir := range changedDirs {
-				if changedDir == dir || strings.HasPrefix(changedDir, dir+string(filepath.Separator)) {
-					hasChanges = true
-					break
-				}
-			}
-			if !hasChanges {
-				continue
-			}
+		opts := IngestOptions{
+			Extensions:     exts,
+			CollectionName: collection,
+			Reset:          reset,
+			Files:          filesToIngest,
+		}
+		// On reset, Docker handles the collection wipe; let it process the whole
+		// directory rather than a --files list (simpler, and all files are "new").
+		if reset {
+			opts.Files = nil
+		}
 
-			opts := IngestOptions{
-				Extensions:     SupportedFileExtensions,
-				CollectionName: collection,
-			}
-			if err := i.Run([]string{dir}, opts, outputFn); err != nil {
-				return nil, fmt.Errorf("running ingest for %s: %w", dir, err)
+		if err := i.Run(absDirectories, opts, outputFn); err != nil {
+			return nil, err
+		}
+
+		// Record hashes for every file we passed to Docker. This marks
+		// unprocessable files (e.g. scanned PDFs with no text) as "seen" so
+		// they are not retried until their content actually changes.
+		for _, f := range filesToIngest {
+			if hash, ok := newHashes[f]; ok {
+				if err := store.Set(f, hash); err != nil {
+					return nil, fmt.Errorf("updating hash store: %w", err)
+				}
 			}
 		}
 	} else {

@@ -103,6 +103,51 @@ func (c *DockerClient) RemoveCollection(name string) error {
 	return nil
 }
 
+// DeleteFile removes all chunks for a given file name from the collection.
+// Returns the number of chunks deleted.
+func (c *DockerClient) DeleteFile(collectionName, fileName string) (int, error) {
+	cols, err := c.ListCollections()
+	if err != nil {
+		return 0, err
+	}
+	var collectionID string
+	for _, col := range cols {
+		if col.Name == collectionName {
+			collectionID = col.ID
+			break
+		}
+	}
+	if collectionID == "" {
+		return 0, fmt.Errorf("collection %q not found", collectionName)
+	}
+
+	url := fmt.Sprintf("%s/api/v2/tenants/%s/databases/%s/collections/%s/delete",
+		chromaBaseURL, chromaTenant, chromaDatabase, collectionID)
+
+	reqBody, err := json.Marshal(map[string]any{
+		"where": map[string]any{"file": map[string]any{"$eq": fileName}},
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Post(url, "application/json", bytes.NewReader(reqBody))
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		return 0, fmt.Errorf("chromadb returned status %d", resp.StatusCode)
+	}
+
+	var ids []string
+	if err := json.NewDecoder(resp.Body).Decode(&ids); err != nil {
+		return 0, nil
+	}
+	return len(ids), nil
+}
+
 // GetFileHashes queries the collection for one chunk per file (chunk index 0)
 // and returns the stored file_hash metadata for each file.
 func (c *DockerClient) GetFileHashes(collectionName string) ([]FileHashRecord, error) {
