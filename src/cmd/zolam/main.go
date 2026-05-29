@@ -212,7 +212,6 @@ func newIngestCmd() *cobra.Command {
 
 func newUpdateCmd() *cobra.Command {
 	var collection string
-	var hashesFilePath string
 
 	cmd := &cobra.Command{
 		Use:   "update <directories...>",
@@ -229,7 +228,7 @@ func newUpdateCmd() *cobra.Command {
 				return err
 			}
 
-			result, err := ing.RunUpdateOnly(args, collection, hashesFilePath, func(line string) {
+			result, err := ing.RunUpdateOnly(args, collection, func(line string) {
 				fmt.Println(line)
 			})
 			if err != nil {
@@ -243,7 +242,6 @@ func newUpdateCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&collection, "collection", "", "ChromaDB collection name")
-	cmd.Flags().StringVar(&hashesFilePath, "hashes-file-path", "zolam-file-hashes.json", "Path to the JSON file storing file paths and their hashes")
 	cmd.MarkFlagRequired("collection")
 
 	return cmd

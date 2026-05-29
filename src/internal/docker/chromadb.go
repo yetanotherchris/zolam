@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -14,6 +15,12 @@ const chromaDatabase = "default_database"
 type Collection struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
+}
+
+type FileHashRecord struct {
+	Source string
+	File   string
+	Hash   string
 }
 
 func (c *DockerClient) StartChromaDB() error {
@@ -94,6 +101,66 @@ func (c *DockerClient) RemoveCollection(name string) error {
 		return fmt.Errorf("chromadb returned status %d", resp.StatusCode)
 	}
 	return nil
+}
+
+// GetFileHashes queries the collection for one chunk per file (chunk index 0)
+// and returns the stored file_hash metadata for each file.
+func (c *DockerClient) GetFileHashes(collectionName string) ([]FileHashRecord, error) {
+	cols, err := c.ListCollections()
+	if err != nil {
+		return nil, err
+	}
+	var collectionID string
+	for _, col := range cols {
+		if col.Name == collectionName {
+			collectionID = col.ID
+			break
+		}
+	}
+	if collectionID == "" {
+		return nil, nil
+	}
+
+	url := fmt.Sprintf("%s/api/v2/tenants/%s/databases/%s/collections/%s/get",
+		chromaBaseURL, chromaTenant, chromaDatabase, collectionID)
+
+	reqBody, err := json.Marshal(map[string]any{
+		"where":   map[string]any{"chunk": map[string]any{"$eq": 0}},
+		"include": []string{"metadatas"},
+		"limit":   100000,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Post(url, "application/json", bytes.NewReader(reqBody))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("chromadb returned status %d", resp.StatusCode)
+	}
+
+	var result struct {
+		Metadatas []map[string]any `json:"metadatas"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+
+	records := make([]FileHashRecord, 0, len(result.Metadatas))
+	for _, meta := range result.Metadatas {
+		source, _ := meta["source"].(string)
+		file, _ := meta["file"].(string)
+		hash, _ := meta["file_hash"].(string)
+		if source == "" || file == "" || hash == "" {
+			continue
+		}
+		records = append(records, FileHashRecord{Source: source, File: file, Hash: hash})
+	}
+	return records, nil
 }
 
 func (c *DockerClient) EnsureChromaDB(timeout time.Duration) error {

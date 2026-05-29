@@ -2,10 +2,8 @@ package zolam
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -165,56 +163,37 @@ func (i *Ingester) Run(directories []string, opts IngestOptions, outputFn func(s
 	return runAndStream(cmd, outputFn)
 }
 
-func (i *Ingester) loadHashes(path string) (map[string]string, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return make(map[string]string), nil
-		}
-		return nil, fmt.Errorf("reading hashes: %w", err)
-	}
-
-	var hashes map[string]string
-	if err := json.Unmarshal(data, &hashes); err != nil {
-		return nil, fmt.Errorf("parsing hashes: %w", err)
-	}
-	return hashes, nil
-}
-
-func (i *Ingester) saveHashes(path string, hashes map[string]string) error {
-	data, err := json.MarshalIndent(hashes, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshalling hashes: %w", err)
-	}
-
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("creating hashes directory: %w", err)
-	}
-
-	if err := os.WriteFile(path, data, 0o644); err != nil {
-		return fmt.Errorf("writing hashes: %w", err)
-	}
-	return nil
-}
-
 // RunUpdateOnly performs a differential ingest: only files that have been added
-// or changed since the last run are ingested.
-func (i *Ingester) RunUpdateOnly(directories []string, collection string, hashesFilePath string, outputFn func(string)) (*UpdateResult, error) {
-	oldHashes, err := i.loadHashes(hashesFilePath)
+// or changed since the last run are ingested. File hashes are read from and
+// written to ChromaDB document metadata rather than a local file.
+func (i *Ingester) RunUpdateOnly(directories []string, collection string, outputFn func(string)) (*UpdateResult, error) {
+	records, err := i.docker.GetFileHashes(collection)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("querying file hashes: %w", err)
 	}
 
-	newHashes := make(map[string]string)
 	absDirectories := make([]string, 0, len(directories))
-
+	sourceDirMap := make(map[string]string)
 	for _, dir := range directories {
 		absPath, err := filepath.Abs(dir)
 		if err != nil {
 			return nil, fmt.Errorf("resolving path %s: %w", dir, err)
 		}
 		absDirectories = append(absDirectories, absPath)
+		sourceDirMap[filepath.Base(absPath)] = absPath
+	}
 
+	oldHashes := make(map[string]string, len(records))
+	for _, r := range records {
+		absDir, ok := sourceDirMap[r.Source]
+		if !ok {
+			continue
+		}
+		oldHashes[filepath.Join(absDir, filepath.FromSlash(r.File))] = r.Hash
+	}
+
+	newHashes := make(map[string]string)
+	for _, absPath := range absDirectories {
 		hashes, err := HashDirectory(absPath, SupportedFileExtensions)
 		if err != nil {
 			return nil, fmt.Errorf("hashing directory %s: %w", absPath, err)
@@ -284,10 +263,6 @@ func (i *Ingester) RunUpdateOnly(directories []string, collection string, hashes
 		}
 	} else {
 		outputFn("No changes detected, nothing to ingest.")
-	}
-
-	if err := i.saveHashes(hashesFilePath, newHashes); err != nil {
-		return nil, err
 	}
 
 	return result, nil

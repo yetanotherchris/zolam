@@ -157,6 +157,15 @@ def make_chunk_id(source: str, filepath: str, chunk_index: int) -> str:
 # INGESTION
 # ---------------------------------------------------------------------------
 
+def compute_file_hash(filepath: Path) -> str:
+    """Return the hex-encoded SHA-256 hash of a file."""
+    h = hashlib.sha256()
+    with open(filepath, "rb") as f:
+        for block in iter(lambda: f.read(65536), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
 def ingest_source(collection, source_name: str, source_config: dict) -> int:
     """Ingest all matching files from a source directory. Returns chunk count."""
     base_path = Path(source_config["path"])
@@ -181,6 +190,7 @@ def ingest_source(collection, source_name: str, source_config: dict) -> int:
             continue
 
         relative = str(filepath.relative_to(base_path))
+        file_hash = compute_file_hash(filepath)
         chunks = chunk_text(text)
 
         ids = [make_chunk_id(source_name, relative, i) for i in range(len(chunks))]
@@ -190,6 +200,7 @@ def ingest_source(collection, source_name: str, source_config: dict) -> int:
                 "file": relative,
                 "chunk": i,
                 "total_chunks": len(chunks),
+                "file_hash": file_hash,
             }
             for i in range(len(chunks))
         ]
