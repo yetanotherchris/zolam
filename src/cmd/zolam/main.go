@@ -7,7 +7,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
+	"unicode"
 
 	"github.com/spf13/cobra"
 	"github.com/yetanotherchris/zolam/internal/docker"
@@ -115,6 +117,53 @@ func initServices() (*docker.DockerClient, *zolam.Ingester, error) {
 	return dc, ing, nil
 }
 
+// looksLikeExtension returns true for tokens like ".md", ".csv,", ".html" —
+// i.e. a dot followed only by letters/digits, with an optional trailing comma.
+func looksLikeExtension(s string) bool {
+	s = strings.TrimRight(s, ",")
+	if len(s) < 2 || s[0] != '.' {
+		return false
+	}
+	for _, c := range s[1:] {
+		if !unicode.IsLetter(c) && !unicode.IsDigit(c) {
+			return false
+		}
+	}
+	return true
+}
+
+// normaliseExtension cleans a raw extension token: trims spaces and commas,
+// then ensures it has a leading dot.
+func normaliseExtension(s string) string {
+	s = strings.TrimRight(strings.TrimSpace(s), ",")
+	if s == "" {
+		return ""
+	}
+	if s[0] != '.' {
+		s = "." + s
+	}
+	return s
+}
+
+// splitArgsFromExtensions separates positional args that are actually extension
+// tokens (e.g. ".md," from a space-after-comma invocation) from real directories.
+func splitArgsFromExtensions(args []string, extensions []string) (dirs []string, exts []string) {
+	exts = make([]string, 0, len(extensions))
+	for _, e := range extensions {
+		if t := normaliseExtension(e); t != "" {
+			exts = append(exts, t)
+		}
+	}
+	for _, a := range args {
+		if looksLikeExtension(a) {
+			exts = append(exts, normaliseExtension(a))
+		} else {
+			dirs = append(dirs, a)
+		}
+	}
+	return dirs, exts
+}
+
 func newIngestCmd() *cobra.Command {
 	var extensions []string
 	var collection string
@@ -131,17 +180,22 @@ func newIngestCmd() *cobra.Command {
 				return err
 			}
 
+			dirs, exts := splitArgsFromExtensions(args, extensions)
+			if len(dirs) == 0 {
+				return fmt.Errorf("no directories specified")
+			}
+
 			opts := zolam.IngestOptions{
 				CollectionName: collection,
 				Reset:          reset,
-				Extensions:     extensions,
+				Extensions:     exts,
 			}
 
 			if err := requireChromaDB(dc); err != nil {
 				return err
 			}
 
-			return ing.Run(args, opts, func(line string) {
+			return ing.Run(dirs, opts, func(line string) {
 				fmt.Println(line)
 			})
 		},
