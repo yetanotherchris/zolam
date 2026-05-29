@@ -32,7 +32,6 @@ import subprocess
 from pathlib import Path
 
 import chromadb
-from tqdm import tqdm
 
 # ---------------------------------------------------------------------------
 # CONFIG
@@ -41,7 +40,7 @@ from tqdm import tqdm
 CHROMA_HOST = os.environ.get("CHROMA_HOST", "chromadb")
 CHROMA_PORT = int(os.environ.get("CHROMA_PORT", "8000"))
 
-SUPPORTED_EXTENSIONS = [".md", ".pdf", ".docx", ".txt", ".py", ".cs", ".js", ".ts", ".json", ".yml", ".yaml"]
+SUPPORTED_EXTENSIONS = [".md", ".pdf", ".docx", ".txt", ".py", ".cs", ".js", ".ts", ".json", ".yml", ".yaml", ".csv", ".html", ".htm"]
 
 CHUNK_SIZE = 2000
 CHUNK_OVERLAP = 200
@@ -50,15 +49,27 @@ CHUNK_OVERLAP = 200
 # TEXT EXTRACTION
 # ---------------------------------------------------------------------------
 
+
 def extract_text(filepath: Path) -> str | None:
     """Extract text from a file based on its extension."""
     ext = filepath.suffix.lower()
 
-    if ext in (".md", ".txt", ".py", ".cs", ".js", ".ts", ".json", ".yml", ".yaml"):
+    if ext in (".md", ".txt", ".py", ".cs", ".js", ".ts", ".json", ".yml", ".yaml", ".csv"):
         try:
             return filepath.read_text(encoding="utf-8", errors="replace")
         except Exception as e:
-            tqdm.write(f"  SKIP {filepath}: {e}")
+            print(f"  SKIP {filepath}: {e}")
+            return None
+
+    if ext in (".html", ".htm"):
+        try:
+            import html2text
+            raw = filepath.read_text(encoding="utf-8", errors="replace")
+            h = html2text.HTML2Text()
+            text = h.handle(raw).strip()
+            return text if text else None
+        except Exception as e:
+            print(f"  SKIP {filepath}: {e}")
             return None
 
     if ext == ".pdf":
@@ -84,13 +95,13 @@ def extract_text(filepath: Path) -> str | None:
                             try:
                                 fitz_doc = fitz.open(str(filepath))
                             except Exception as fitz_err:
-                                tqdm.write(f"  Cannot open for OCR {filepath}: {fitz_err}")
+                                print(f"  Cannot open for OCR {filepath}: {fitz_err}")
                         if fitz_doc is not None and page_num < fitz_doc.page_count:
                             fitz_page = fitz_doc[page_num]
                             try:
                                 page_text = fitz_page.get_text(textpage=fitz_page.get_textpage_ocr(language="eng"))
                             except Exception as ocr_err:
-                                tqdm.write(f"  OCR failed {filepath} page {page_num}: {ocr_err}")
+                                print(f"  OCR failed {filepath} page {page_num}: {ocr_err}")
                     pages.append(page_text)
             finally:
                 if fitz_doc:
@@ -99,7 +110,7 @@ def extract_text(filepath: Path) -> str | None:
             full_text = "\n".join(pages)
             return full_text if full_text.strip() else None
         except Exception as e:
-            tqdm.write(f"  SKIP {filepath}: {e}")
+            print(f"  SKIP {filepath}: {e}")
             return None
 
     if ext == ".docx":
@@ -109,7 +120,7 @@ def extract_text(filepath: Path) -> str | None:
             text = "\n".join(p.text for p in doc.paragraphs)
             return text if text.strip() else None
         except Exception as e:
-            tqdm.write(f"  SKIP {filepath}: {e}")
+            print(f"  SKIP {filepath}: {e}")
             return None
 
     return None
@@ -157,11 +168,14 @@ def ingest_source(collection, source_name: str, source_config: dict) -> int:
 
     count = 0
     files = []
-    for ext in tqdm(extensions, desc="  Scanning extensions", unit="ext", leave=False):
+    for ext in extensions:
         files.extend(base_path.rglob(f"*{ext}"))
-    print(f"  Found {len(files)} files")
+    total_files = len(files)
+    print(f"  Found {total_files} files")
 
-    for filepath in tqdm(files, desc="  Ingesting files", unit="file"):
+    for idx, filepath in enumerate(files, start=1):
+        pct = int(idx / total_files * 100) if total_files else 0
+        print(f'  Ingesting "{filepath.name}" ({idx}/{total_files} - {pct}%)')
         text = extract_text(filepath)
         if not text:
             continue
@@ -189,7 +203,7 @@ def ingest_source(collection, source_name: str, source_config: dict) -> int:
                     metadatas=metadatas[b:b + batch_size],
                 )
         except Exception as e:
-            tqdm.write(f"  ERROR upserting {relative}: {e}")
+            print(f"  ERROR upserting {relative}: {e}")
             continue
 
         count += len(chunks)

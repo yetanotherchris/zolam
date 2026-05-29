@@ -9,7 +9,7 @@ RUN pip install --no-cache-dir \
     tokenizers \
     pymupdf \
     python-docx \
-    tqdm \
+    html2text \
     && pip uninstall -y pip \
     && find /opt/venv -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null; true
 
@@ -30,6 +30,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=builder /opt/venv /opt/venv
 COPY --from=builder /root/.cache/chroma /root/.cache/chroma
 ENV PATH="/opt/venv/bin:$PATH"
+ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 COPY ingest.py .
