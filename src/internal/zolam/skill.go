@@ -19,9 +19,9 @@ const ClaudeSkillSnippet = `## Personal document search
 
 This project has the zolam skill installed. When the user asks about the
 contents of their own files (notes, contracts, manuals, PDFs), use the
-zolam skill: run ` + "`zolam projects list`" + ` to see indexed projects, then
-` + "`zolam query \"<question>\" --project <name>`" + ` or read
-` + "`~/.zolam/<project>/index.md`" + `.
+zolam skill: run ` + "`zolam query \"<question>\"`" + ` from the project's
+directory (run ` + "`zolam ingest`" + ` there first if it hasn't been indexed
+yet), or read its ` + "`.zolam.index.md`" + ` manifest directly.
 `
 
 // WriteClaudeSkill installs ~/.claude/skills/zolam/SKILL.md, overwriting any

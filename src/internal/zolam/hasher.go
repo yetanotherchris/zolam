@@ -47,6 +47,16 @@ func HashDirectory(dir string, extensions []string) (map[string]string, error) {
 		if err != nil {
 			return err
 		}
+		// Never ingest zolam's own project files/sidecars (.zolam.project.json,
+		// .zolam.index.md, .zolam.extracted/, ...): when no source directory is
+		// given, ingest scans the project directory itself, which is where
+		// these live.
+		if strings.HasPrefix(info.Name(), ".zolam.") {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
 		if info.IsDir() {
 			return nil
 		}

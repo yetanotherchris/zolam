@@ -190,9 +190,11 @@ func (i *Ingester) Run(directories []string, opts IngestOptions, outputFn func(s
 	return runAndStream(cmd, outputFn)
 }
 
-// RunSync performs a hash-aware sync: hashes files on disk, compares against
-// the local hash store (~/.zolam/hashes.db), and passes only new or changed
-// files to Docker. Both zolam ingest and zolam update call this.
+// RunSync performs a hash-aware sync against the legacy Docker/ChromaDB
+// backend: hashes files on disk, compares against the local hash store
+// (~/.zolam/hashes.db), and passes only new or changed files to Docker.
+// Not wired into the CLI (which only ever creates duckdb/jsonl projects via
+// RunV3Sync); kept as library support for the legacy chroma backend.
 //
 // extensions controls which file types are considered; nil uses SupportedFileExtensions.
 // When reset is true the hash store and ChromaDB collection are both cleared before ingesting.
