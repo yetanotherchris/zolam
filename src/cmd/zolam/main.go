@@ -92,7 +92,6 @@ func main() {
 		newQueryCmd(),
 		newProjectsCmd(),
 		newInitCmd(),
-		newMigrateCmd(),
 		newChromaDBCmd(),
 		newCollectionsCmd(),
 		newMcpCmd(),
@@ -486,48 +485,6 @@ func newInitCmd() *cobra.Command {
 			}
 		},
 	}
-}
-
-func newMigrateCmd() *cobra.Command {
-	var project string
-	var backend string
-
-	cmd := &cobra.Command{
-		Use:   "migrate",
-		Short: "Best-effort migration from a running chroma collection to a v3 flat-file project",
-		Long: "Pulls documents out of a running ChromaDB collection, re-chunks and re-embeds them with\n" +
-			"the current model, and writes a duckdb/jsonl project of the same name. Original PDF/DOCX\n" +
-			"bytes are not recoverable from Chroma, so only re-embedding (not re-extraction) is done.\n" +
-			"Requires ChromaDB to be running for the duration.",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if project == "" {
-				return fmt.Errorf("--project is required")
-			}
-			dc, _, err := initServices()
-			if err != nil {
-				return err
-			}
-			if err := requireChromaDB(dc); err != nil {
-				return err
-			}
-			result, err := zolam.MigrateFromChroma(dc, zolam.MigrateOptions{
-				ProjectName: project,
-				Backend:     backend,
-			}, func(line string) {
-				fmt.Println(line)
-			})
-			if err != nil {
-				return err
-			}
-			fmt.Printf("\nMigration complete: %d file(s) migrated\n", result.Added+result.Changed)
-			return nil
-		},
-	}
-
-	cmd.Flags().StringVar(&project, "project", "", "Project (and chroma collection) name")
-	cmd.Flags().StringVar(&backend, "backend", "", "Target backend: duckdb (default) or jsonl")
-
-	return cmd
 }
 
 func newChromaDBCmd() *cobra.Command {

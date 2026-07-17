@@ -133,17 +133,6 @@ zolam init claude      # installs ~/.claude/skills/zolam/SKILL.md
 zolam init opencode    # installs ~/.config/opencode/AGENTS.md
 ```
 
-### migrate
-
-Best-effort, one-time migration of an existing `chroma` collection into a
-`duckdb`/`jsonl` project. Requires ChromaDB running for the duration.
-Original PDF/DOCX bytes aren't recoverable from Chroma, so only
-re-embedding (not re-extraction) happens.
-
-```bash
-zolam migrate --project <name> [--backend duckdb|jsonl]
-```
-
 ## Environment Variables
 
 | Variable | Default | Description |
@@ -171,7 +160,8 @@ zolam mcp claude                                                  # register chr
 zolam collections list                                            # list chroma collections
 ```
 
-To move existing data to v3, see [`zolam migrate`](#migrate) above.
+There's no automated migration path from `chroma` to `duckdb`/`jsonl` —
+re-ingest your source directories into a new project with `zolam ingest`.
 
 ## Building from Source
 

@@ -25,7 +25,6 @@
 - [x] `zolam query`: semantic (default) and `--keyword`, `--json`
 - [x] `zolam projects list` / `zolam projects remove`
 - [x] `zolam init claude` / `zolam init opencode`
-- [x] `zolam migrate --project <name>` (best-effort, from a running chroma collection)
 - [x] Deprecation notices on `zolam chromadb`, `zolam mcp`, `zolam collections`
 
 ## Claude Code skill

@@ -75,15 +75,14 @@ recorded model differs from zolam's current default
 (`BAAI/bge-small-en-v1.5`, 384 dims), `ingest`/`update`/`query` refuse
 with a one-line remedy pointing at `--reset`.
 
-## `migrate`
+## No `migrate` command
 
-Best-effort: pulls documents + metadata from a running ChromaDB
-collection over its existing HTTP API, reconstructs each file's text by
-concatenating its chunks in stored chunk order (original PDF/DOCX bytes
-are not recoverable from Chroma, so re-extraction is not attempted — only
-re-embedding), writes the reconstructed text as `.md` under a temp
-staging dir, and then runs it through the normal v3 ingest path so
-chunking/embedding/index-writing code is not duplicated.
+The spec's `zolam migrate` (best-effort re-embed of an existing chroma
+collection into duckdb/jsonl) was dropped: with a single-user deployment,
+re-running `zolam ingest` against the original source directories is
+simpler and lossless (unlike migrate, which can only reconstruct text
+from stored chunks, not original PDF/DOCX bytes). If multi-user adoption
+ever needs a real migration path, revisit this.
 
 ## Legacy path
 

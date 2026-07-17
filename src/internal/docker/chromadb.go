@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"sort"
-	"strings"
 	"time"
 )
 
@@ -208,92 +206,6 @@ func (c *DockerClient) GetFileHashes(collectionName string) ([]FileHashRecord, e
 		records = append(records, FileHashRecord{Source: source, File: file, Hash: hash})
 	}
 	return records, nil
-}
-
-// GetAllDocuments fetches every chunk's document text and metadata from a
-// collection and reconstructs each file's text by concatenating its chunks
-// in stored chunk order. Returns a map from "<source>/<file>" to
-// reconstructed text, for best-effort migration off the chroma backend.
-func (c *DockerClient) GetAllDocuments(collectionName string) (map[string]string, error) {
-	cols, err := c.ListCollections()
-	if err != nil {
-		return nil, err
-	}
-	var collectionID string
-	for _, col := range cols {
-		if col.Name == collectionName {
-			collectionID = col.ID
-			break
-		}
-	}
-	if collectionID == "" {
-		return nil, fmt.Errorf("collection %q not found", collectionName)
-	}
-
-	url := fmt.Sprintf("%s/api/v2/tenants/%s/databases/%s/collections/%s/get",
-		chromaBaseURL, chromaTenant, chromaDatabase, collectionID)
-
-	reqBody, err := json.Marshal(map[string]any{
-		"include": []string{"documents", "metadatas"},
-		"limit":   1000000,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	client := &http.Client{Timeout: 60 * time.Second}
-	resp, err := client.Post(url, "application/json", bytes.NewReader(reqBody))
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("chromadb returned status %d", resp.StatusCode)
-	}
-
-	var result struct {
-		Documents []string         `json:"documents"`
-		Metadatas []map[string]any `json:"metadatas"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, err
-	}
-
-	type chunkRef struct {
-		chunk int
-		text  string
-	}
-	byFile := make(map[string][]chunkRef)
-	for i, meta := range result.Metadatas {
-		if i >= len(result.Documents) {
-			continue
-		}
-		source, _ := meta["source"].(string)
-		file, _ := meta["file"].(string)
-		if source == "" || file == "" {
-			continue
-		}
-		chunkNum := 0
-		if v, ok := meta["chunk"].(float64); ok {
-			chunkNum = int(v)
-		}
-		key := source + "/" + file
-		byFile[key] = append(byFile[key], chunkRef{chunk: chunkNum, text: result.Documents[i]})
-	}
-
-	out := make(map[string]string, len(byFile))
-	for key, chunks := range byFile {
-		sort.Slice(chunks, func(i, j int) bool { return chunks[i].chunk < chunks[j].chunk })
-		var b strings.Builder
-		for i, c := range chunks {
-			if i > 0 {
-				b.WriteString("\n\n")
-			}
-			b.WriteString(c.text)
-		}
-		out[key] = b.String()
-	}
-	return out, nil
 }
 
 func (c *DockerClient) EnsureChromaDB(timeout time.Duration) error {

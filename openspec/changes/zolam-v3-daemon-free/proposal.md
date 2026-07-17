@@ -27,18 +27,21 @@ Prerequisites drop from "Docker + Docker Compose + uv" to just "uv".
 ## Scope
 
 In scope: extraction/chunking/embedding pipeline, `duckdb` and `jsonl`
-backends, `zolam ingest/update/query/projects/init/migrate`, the Claude
-Code skill file, incremental updates, README updates.
+backends, `zolam ingest/update/query/projects/init`, the Claude Code
+skill file, incremental updates, README updates.
 
 Out of scope (non-goals): pure-Go/ONNX embeddings, LLM-generated
 summaries at ingest time, scaling beyond ~thousands of files per project.
+`zolam migrate` (chroma → duckdb/jsonl) was dropped from scope: with a
+single-user deployment, re-ingesting the original source directories is
+simpler and lossless — see `design.md`.
 
 ## Rollout
 
 1. Extraction + chunking + embedding pipeline, jsonl backend.
 2. duckdb backend, made default.
 3. `query`, `init claude`/`init opencode`, skill file.
-4. `update` incremental logic, `migrate`.
+4. `update` incremental logic.
 5. Deprecation notices on `chromadb`/`mcp`; README rewrite.
 6. Release as v3.0.0 (breaking: `--collection` → `--project`, data dir layout).
 
