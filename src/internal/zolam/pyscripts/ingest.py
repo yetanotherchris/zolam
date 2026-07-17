@@ -12,7 +12,7 @@
 
 Invoked by the zolam Go CLI via `uv run ingest.py`. Owns extraction,
 chunking, embedding, and all reads/writes of the per-project index
-(.zolam.duckdb or .zolam.jsonl). Human-readable progress goes to stderr;
+(index.duckdb or index.jsonl). Human-readable progress goes to stderr;
 the final line on stdout is always a single JSON object.
 
     uv run ingest.py --mode ingest --project-dir <dir> --backend duckdb \
@@ -156,7 +156,7 @@ def extract_docx(path: Path) -> str:
 
 
 def _sidecar_path(project_dir: Path, source_path: Path) -> Path:
-    return project_dir / ".zolam.extracted" / f"{source_path.name}.md"
+    return project_dir / "extracted" / f"{source_path.name}.md"
 
 
 def _front_matter(source_path: Path) -> str:
@@ -334,12 +334,12 @@ class JsonlBackend:
 
 def open_backend(project_dir: Path, backend_name: str, model: str, dims: int, require_existing: bool = False):
     if backend_name == "duckdb":
-        path = str(project_dir / ".zolam.duckdb")
+        path = str(project_dir / "index.duckdb")
         if require_existing and not Path(path).exists():
             raise RuntimeError(f"no duckdb index at {path}; run 'zolam ingest' first")
         return DuckDBBackend(path, model, dims)
     if backend_name == "jsonl":
-        path = str(project_dir / ".zolam.jsonl")
+        path = str(project_dir / "index.jsonl")
         if require_existing and not Path(path).exists():
             raise RuntimeError(f"no jsonl index at {path}; run 'zolam ingest' first")
         return JsonlBackend(path, model, dims)

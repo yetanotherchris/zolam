@@ -7,12 +7,12 @@ import (
 	"path/filepath"
 )
 
-// fileHashesName is the hidden flat JSON file recording path -> sha256 for
+// fileHashesName is the flat JSON file recording path -> sha256 for
 // a v3 project's incremental-update state, stored directly in the
 // project's own directory.
-const fileHashesName = ".zolam.hashes.json"
+const fileHashesName = "file-hashes.json"
 
-// LoadFileHashes reads <projectDir>/.zolam.hashes.json. A missing file is not
+// LoadFileHashes reads <projectDir>/file-hashes.json. A missing file is not
 // an error; it returns an empty map (a project's first ingest).
 func LoadFileHashes(projectDir string) (map[string]string, error) {
 	data, err := os.ReadFile(filepath.Join(projectDir, fileHashesName))
@@ -20,12 +20,12 @@ func LoadFileHashes(projectDir string) (map[string]string, error) {
 		if os.IsNotExist(err) {
 			return map[string]string{}, nil
 		}
-		return nil, fmt.Errorf("reading .zolam.hashes.json: %w", err)
+		return nil, fmt.Errorf("reading file-hashes.json: %w", err)
 	}
 	hashes := make(map[string]string)
 	if len(data) > 0 {
 		if err := json.Unmarshal(data, &hashes); err != nil {
-			return nil, fmt.Errorf("parsing .zolam.hashes.json: %w", err)
+			return nil, fmt.Errorf("parsing file-hashes.json: %w", err)
 		}
 	}
 	return hashes, nil
@@ -38,16 +38,16 @@ func SaveFileHashes(projectDir string, hashes map[string]string) error {
 	}
 	data, err := json.MarshalIndent(hashes, "", "  ")
 	if err != nil {
-		return fmt.Errorf("serialising .zolam.hashes.json: %w", err)
+		return fmt.Errorf("serialising file-hashes.json: %w", err)
 	}
 	path := filepath.Join(projectDir, fileHashesName)
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return fmt.Errorf("writing .zolam.hashes.json: %w", err)
+		return fmt.Errorf("writing file-hashes.json: %w", err)
 	}
 	if err := os.Rename(tmp, path); err != nil {
 		os.Remove(tmp)
-		return fmt.Errorf("finalising .zolam.hashes.json: %w", err)
+		return fmt.Errorf("finalising file-hashes.json: %w", err)
 	}
 	return nil
 }

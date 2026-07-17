@@ -11,12 +11,12 @@ import (
 
 // V3SyncOptions controls a flat-file (duckdb/jsonl) ingest run.
 type V3SyncOptions struct {
-	// ProjectDir is where the project's .zolam.* files live. Empty means
-	// the current working directory.
-	ProjectDir string
+	// Root is the directory whose .zolam/ subdirectory holds the project's
+	// files. Empty means the current working directory.
+	Root string
 	// Dirs, when non-empty, sets/overrides the project's source_dirs. When
 	// empty on an existing project, the stored source_dirs are used; when
-	// empty on a brand new project, ProjectDir itself is used.
+	// empty on a brand new project, Root itself is used.
 	Dirs []string
 	// Extensions and Backend only matter when creating a brand new project;
 	// they are ignored (a stored mismatch on Backend is an error) once a
@@ -26,9 +26,9 @@ type V3SyncOptions struct {
 	Reset      bool
 }
 
-// ResolveProjectDir returns dir as an absolute path, defaulting to the
-// current working directory when dir is empty.
-func ResolveProjectDir(dir string) (string, error) {
+// ResolveRoot returns dir as an absolute path, defaulting to the current
+// working directory when dir is empty.
+func ResolveRoot(dir string) (string, error) {
 	if dir == "" {
 		wd, err := os.Getwd()
 		if err != nil {
@@ -39,16 +39,18 @@ func ResolveProjectDir(dir string) (string, error) {
 	return filepath.Abs(dir)
 }
 
-// RunV3Sync creates or loads a flat-file project in ProjectDir, diffs the
-// current file set on disk against .zolam.hashes.json, invokes the
-// embedded Python pipeline for added/changed/removed files, and
-// regenerates .zolam.index.md. `zolam ingest` calls this for every run
-// (both first-time ingest and incremental re-sync).
+// RunV3Sync creates or loads a flat-file project in Root's .zolam/
+// subdirectory, diffs the current file set on disk against
+// file-hashes.json, invokes the embedded Python pipeline for
+// added/changed/removed files, and regenerates index.md. `zolam ingest`
+// calls this for every run (both first-time ingest and incremental
+// re-sync).
 func RunV3Sync(opts V3SyncOptions, outputFn func(string)) (*UpdateResult, *domain.Project, error) {
-	projectDir, err := ResolveProjectDir(opts.ProjectDir)
+	root, err := ResolveRoot(opts.Root)
 	if err != nil {
 		return nil, nil, err
 	}
+	projectDir := domain.LocalProjectDir(root)
 
 	if opts.Reset {
 		if err := domain.Remove(projectDir); err != nil {
@@ -56,7 +58,7 @@ func RunV3Sync(opts V3SyncOptions, outputFn func(string)) (*UpdateResult, *domai
 		}
 	}
 
-	project, err := loadOrCreateProject(projectDir, opts)
+	project, err := loadOrCreateProject(projectDir, root, opts)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -116,18 +118,18 @@ func RunV3Sync(opts V3SyncOptions, outputFn func(string)) (*UpdateResult, *domai
 		return nil, nil, err
 	}
 
-	if err := GenerateIndexMD(project, filepath.Base(projectDir), projectDir, newHashes); err != nil {
+	if err := GenerateIndexMD(project, filepath.Base(root), projectDir, newHashes); err != nil {
 		return nil, nil, err
 	}
 
 	return result, project, nil
 }
 
-func loadOrCreateProject(projectDir string, opts V3SyncOptions) (*domain.Project, error) {
+func loadOrCreateProject(projectDir, root string, opts V3SyncOptions) (*domain.Project, error) {
 	if !domain.Exists(projectDir) {
 		dirs := opts.Dirs
 		if len(dirs) == 0 {
-			dirs = []string{projectDir}
+			dirs = []string{root}
 		}
 		backend := opts.Backend
 		if backend == "" {
@@ -167,17 +169,18 @@ func loadOrCreateProject(projectDir string, opts V3SyncOptions) (*domain.Project
 	return project, nil
 }
 
-// LoadV3Project loads an existing flat-file project from dir (defaulting
-// to the current working directory), returning a clear, actionable error
-// if it doesn't exist or was indexed with a now-unsupported embedding
-// model.
+// LoadV3Project loads an existing flat-file project from dir's .zolam/
+// subdirectory (dir defaulting to the current working directory),
+// returning a clear, actionable error if it doesn't exist or was indexed
+// with a now-unsupported embedding model.
 func LoadV3Project(dir string) (*domain.Project, string, error) {
-	projectDir, err := ResolveProjectDir(dir)
+	root, err := ResolveRoot(dir)
 	if err != nil {
 		return nil, "", err
 	}
+	projectDir := domain.LocalProjectDir(root)
 	if !domain.Exists(projectDir) {
-		return nil, "", fmt.Errorf("no zolam project in %s; run 'zolam ingest' there first", projectDir)
+		return nil, "", fmt.Errorf("no zolam project in %s; run 'zolam ingest' there first", root)
 	}
 	project, err := domain.Load(projectDir)
 	if err != nil {

@@ -18,13 +18,13 @@ var binaryExtractedExtensions = map[string]bool{
 	".docx": true,
 }
 
-// sidecarDirName mirrors pyscripts/ingest.py's sidecar directory: a hidden
-// subdirectory alongside the other .zolam.* project files.
-const sidecarDirName = ".zolam.extracted"
+// sidecarDirName mirrors pyscripts/ingest.py's sidecar directory, nested
+// under the project's .zolam/ directory.
+const sidecarDirName = "extracted"
 
-// indexMDName is the hidden generated project manifest, stored directly in
-// the project's own directory alongside its other .zolam.* files.
-const indexMDName = ".zolam.index.md"
+// indexMDName is the generated project manifest, stored in the project's
+// .zolam/ directory.
+const indexMDName = "index.md"
 
 // stripFrontMatter removes a leading "---\n...\n---\n" YAML block, if present,
 // so it isn't mistaken for document body text.
@@ -155,10 +155,10 @@ func sourceDirLabel(path string, sourceDirs []string) string {
 	return filepath.Base(best)
 }
 
-// GenerateIndexMD regenerates <projectDir>/.zolam.index.md from the files
+// GenerateIndexMD regenerates <projectDir>/index.md from the files
 // currently on disk: plain-text sources are read directly, and binary
-// formats are read from their .zolam.extracted/ sidecar. currentFiles is
-// the full set of indexed paths (e.g. from .zolam.hashes.json) after this
+// formats are read from their extracted/ sidecar. currentFiles is
+// the full set of indexed paths (e.g. from file-hashes.json) after this
 // run's adds/changes/removals have been applied.
 func GenerateIndexMD(project *domain.Project, projectName, projectDir string, currentFiles map[string]string) error {
 	groups := make(map[string][]string)

@@ -64,15 +64,17 @@ func DataDir() (string, error) {
 	return filepath.Join(home, ".zolam"), nil
 }
 
-// projectJSONName is the hidden marker file for a v3 project. It lives
-// directly in the directory being indexed (normally the current working
-// directory) rather than under a nested .zolam/ subdirectory or a global
-// registry, so a project is just "wherever its dot-files are".
-const projectJSONName = ".zolam.project.json"
+// LocalProjectDir returns the hidden .zolam/ subdirectory of root (normally
+// the current working directory) where a v3 project's files live, replacing
+// the old global ~/.zolam/<name> registry: a project is just "the directory
+// with a .zolam/ folder in it".
+func LocalProjectDir(root string) string {
+	return filepath.Join(root, ".zolam")
+}
 
 // ProjectJSONPath returns the path to a project's project.json.
 func ProjectJSONPath(projectDir string) string {
-	return filepath.Join(projectDir, projectJSONName)
+	return filepath.Join(projectDir, "project.json")
 }
 
 // Exists reports whether a project.json exists for the given project dir.
@@ -131,19 +133,10 @@ func New(backend string, sourceDirs, extensions []string) *Project {
 	}
 }
 
-// Remove deletes a project's zolam-owned files (project.json, hashes,
-// index, sidecars) from projectDir. It never removes projectDir itself or
-// anything not matching the .zolam.* prefix, since projectDir is normally
-// the user's own working directory full of unrelated files.
+// Remove deletes a project's entire .zolam/ directory (project.json,
+// hashes, index, sidecars). Safe to RemoveAll: projectDir is always a
+// dedicated .zolam/ folder that zolam exclusively owns, never the user's
+// working directory itself.
 func Remove(projectDir string) error {
-	matches, err := filepath.Glob(filepath.Join(projectDir, ".zolam.*"))
-	if err != nil {
-		return err
-	}
-	for _, m := range matches {
-		if err := os.RemoveAll(m); err != nil {
-			return err
-		}
-	}
-	return nil
+	return os.RemoveAll(projectDir)
 }

@@ -21,7 +21,7 @@ This project has the zolam skill installed. When the user asks about the
 contents of their own files (notes, contracts, manuals, PDFs), use the
 zolam skill: run ` + "`zolam query \"<question>\"`" + ` from the project's
 directory (run ` + "`zolam ingest`" + ` there first if it hasn't been indexed
-yet), or read its ` + "`.zolam.index.md`" + ` manifest directly.
+yet), or read its ` + "`.zolam/index.md`" + ` manifest directly.
 `
 
 // WriteClaudeSkill installs ~/.claude/skills/zolam/SKILL.md, overwriting any

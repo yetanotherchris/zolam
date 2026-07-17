@@ -47,17 +47,14 @@ func HashDirectory(dir string, extensions []string) (map[string]string, error) {
 		if err != nil {
 			return err
 		}
-		// Never ingest zolam's own project files/sidecars (.zolam.project.json,
-		// .zolam.index.md, .zolam.extracted/, ...): when no source directory is
-		// given, ingest scans the project directory itself, which is where
-		// these live.
-		if strings.HasPrefix(info.Name(), ".zolam.") {
-			if info.IsDir() {
+		// Never descend into zolam's own .zolam/ project directory (project.json,
+		// index.duckdb/jsonl, file-hashes.json, index.md, extracted/ sidecars):
+		// when no source directory is given, ingest scans the current directory
+		// itself, which is where .zolam/ lives.
+		if info.IsDir() {
+			if info.Name() == ".zolam" {
 				return filepath.SkipDir
 			}
-			return nil
-		}
-		if info.IsDir() {
 			return nil
 		}
 		if extSet[strings.ToLower(filepath.Ext(path))] {

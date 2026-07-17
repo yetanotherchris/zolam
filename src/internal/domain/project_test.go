@@ -57,15 +57,24 @@ func TestIsValidBackend(t *testing.T) {
 	}
 }
 
+func TestLocalProjectDir(t *testing.T) {
+	got := LocalProjectDir("/home/user/notes")
+	want := filepath.Join("/home/user/notes", ".zolam")
+	if got != want {
+		t.Errorf("LocalProjectDir() = %q, want %q", got, want)
+	}
+}
+
 func TestRemove(t *testing.T) {
-	projectDir := t.TempDir()
+	root := t.TempDir()
+	projectDir := LocalProjectDir(root)
 	if err := Save(projectDir, New("duckdb", nil, nil)); err != nil {
 		t.Fatalf("Save() returned error: %v", err)
 	}
 
-	// A real source file living alongside the project's dot-files, since
-	// projectDir is normally the user's own working directory.
-	userFile := filepath.Join(projectDir, "notes.md")
+	// A real source file living in root, alongside the project's .zolam/
+	// folder, since root is normally the user's own working directory.
+	userFile := filepath.Join(root, "notes.md")
 	if err := os.WriteFile(userFile, []byte("keep me"), 0o644); err != nil {
 		t.Fatalf("writing fixture user file: %v", err)
 	}

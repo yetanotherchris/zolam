@@ -24,7 +24,7 @@ func TestGenerateIndexMD(t *testing.T) {
 	if err := os.WriteFile(pdfPath, []byte("binary-pdf-bytes"), 0o644); err != nil {
 		t.Fatalf("writing fixture pdf: %v", err)
 	}
-	sidecarDir := filepath.Join(projectDir, ".zolam.extracted")
+	sidecarDir := filepath.Join(projectDir, "extracted")
 	if err := os.MkdirAll(sidecarDir, 0o755); err != nil {
 		t.Fatalf("creating sidecar dir: %v", err)
 	}
@@ -47,7 +47,7 @@ func TestGenerateIndexMD(t *testing.T) {
 		t.Fatalf("GenerateIndexMD() returned error: %v", err)
 	}
 
-	data, err := os.ReadFile(filepath.Join(projectDir, ".zolam.index.md"))
+	data, err := os.ReadFile(filepath.Join(projectDir, "index.md"))
 	if err != nil {
 		t.Fatalf("reading generated index.md: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestGenerateIndexMD(t *testing.T) {
 	if !strings.Contains(got, "[report.pdf]") {
 		t.Errorf("expected report.pdf entry, got:\n%s", got)
 	}
-	if !strings.Contains(got, "extracted: .zolam.extracted/report.pdf.md") {
+	if !strings.Contains(got, "extracted: extracted/report.pdf.md") {
 		t.Errorf("expected extracted sidecar reference for pdf, got:\n%s", got)
 	}
 	if strings.Contains(got, "Page 1") {
@@ -93,7 +93,7 @@ func TestGenerateIndexMD_MissingSourceDegradesGracefully(t *testing.T) {
 		t.Fatalf("GenerateIndexMD() returned error for missing file: %v", err)
 	}
 
-	data, err := os.ReadFile(filepath.Join(projectDir, ".zolam.index.md"))
+	data, err := os.ReadFile(filepath.Join(projectDir, "index.md"))
 	if err != nil {
 		t.Fatalf("reading index.md: %v", err)
 	}
