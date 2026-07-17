@@ -11,12 +11,20 @@ import (
 )
 
 // binaryExtractedExtensions mirrors pyscripts/ingest.py's BINARY_EXTENSIONS:
-// formats whose text lives in an extracted/ sidecar rather than the
-// original file itself.
+// formats whose text lives in a sidecar rather than the original file
+// itself.
 var binaryExtractedExtensions = map[string]bool{
 	".pdf":  true,
 	".docx": true,
 }
+
+// sidecarDirName mirrors pyscripts/ingest.py's sidecar directory, nested
+// under the project's .zolam/ directory.
+const sidecarDirName = "extracted"
+
+// indexMDName is the generated project manifest, stored in the project's
+// .zolam/ directory.
+const indexMDName = "index.md"
 
 // stripFrontMatter removes a leading "---\n...\n---\n" YAML block, if present,
 // so it isn't mistaken for document body text.
@@ -112,7 +120,7 @@ func fileSummary(projectDir, path string) (summary string, extractedRel string) 
 
 	var text string
 	if binaryExtractedExtensions[ext] {
-		extractedRel = filepath.Join("extracted", name+".md")
+		extractedRel = filepath.Join(sidecarDirName, name+".md")
 		data, err := os.ReadFile(filepath.Join(projectDir, extractedRel))
 		if err != nil {
 			return name, ""
@@ -149,9 +157,9 @@ func sourceDirLabel(path string, sourceDirs []string) string {
 
 // GenerateIndexMD regenerates <projectDir>/index.md from the files
 // currently on disk: plain-text sources are read directly, and binary
-// formats are read from their extracted/ sidecar. currentFiles is the
-// full set of indexed paths (e.g. from file-hashes.json) after this run's
-// adds/changes/removals have been applied.
+// formats are read from their extracted/ sidecar. currentFiles is
+// the full set of indexed paths (e.g. from file-hashes.json) after this
+// run's adds/changes/removals have been applied.
 func GenerateIndexMD(project *domain.Project, projectName, projectDir string, currentFiles map[string]string) error {
 	groups := make(map[string][]string)
 	for path := range currentFiles {
@@ -185,14 +193,14 @@ func GenerateIndexMD(project *domain.Project, projectName, projectDir string, cu
 		}
 	}
 
-	path := filepath.Join(projectDir, "index.md")
+	path := filepath.Join(projectDir, indexMDName)
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, []byte(b.String()), 0o644); err != nil {
-		return fmt.Errorf("writing index.md: %w", err)
+		return fmt.Errorf("writing %s: %w", indexMDName, err)
 	}
 	if err := os.Rename(tmp, path); err != nil {
 		os.Remove(tmp)
-		return fmt.Errorf("finalising index.md: %w", err)
+		return fmt.Errorf("finalising %s: %w", indexMDName, err)
 	}
 	return nil
 }

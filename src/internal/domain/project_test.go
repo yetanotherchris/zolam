@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -45,32 +46,6 @@ func TestProjectSaveLoadRoundTrip(t *testing.T) {
 	}
 }
 
-func TestListProjectNames(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("ZOLAM_DATA_DIR", dir)
-
-	names, err := ListProjectNames()
-	if err != nil {
-		t.Fatalf("ListProjectNames() on empty data dir returned error: %v", err)
-	}
-	if len(names) != 0 {
-		t.Fatalf("expected no projects, got %v", names)
-	}
-
-	projDir, _ := ProjectDir("alpha")
-	if err := Save(projDir, New("jsonl", []string{"/x"}, []string{".md"})); err != nil {
-		t.Fatalf("Save() returned error: %v", err)
-	}
-
-	names, err = ListProjectNames()
-	if err != nil {
-		t.Fatalf("ListProjectNames() returned error: %v", err)
-	}
-	if len(names) != 1 || names[0] != "alpha" {
-		t.Errorf("ListProjectNames() = %v, want [alpha]", names)
-	}
-}
-
 func TestIsValidBackend(t *testing.T) {
 	for _, b := range []string{"duckdb", "jsonl", "chroma"} {
 		if !IsValidBackend(b) {
@@ -82,16 +57,35 @@ func TestIsValidBackend(t *testing.T) {
 	}
 }
 
+func TestLocalProjectDir(t *testing.T) {
+	got := LocalProjectDir("/home/user/notes")
+	want := filepath.Join("/home/user/notes", ".zolam")
+	if got != want {
+		t.Errorf("LocalProjectDir() = %q, want %q", got, want)
+	}
+}
+
 func TestRemove(t *testing.T) {
-	dir := t.TempDir()
-	projectDir := filepath.Join(dir, "gone")
+	root := t.TempDir()
+	projectDir := LocalProjectDir(root)
 	if err := Save(projectDir, New("duckdb", nil, nil)); err != nil {
 		t.Fatalf("Save() returned error: %v", err)
 	}
+
+	// A real source file living in root, alongside the project's .zolam/
+	// folder, since root is normally the user's own working directory.
+	userFile := filepath.Join(root, "notes.md")
+	if err := os.WriteFile(userFile, []byte("keep me"), 0o644); err != nil {
+		t.Fatalf("writing fixture user file: %v", err)
+	}
+
 	if err := Remove(projectDir); err != nil {
 		t.Fatalf("Remove() returned error: %v", err)
 	}
 	if Exists(projectDir) {
 		t.Errorf("Exists() reported true after Remove()")
+	}
+	if _, err := os.Stat(userFile); err != nil {
+		t.Errorf("Remove() deleted unrelated user file %q: %v", userFile, err)
 	}
 }

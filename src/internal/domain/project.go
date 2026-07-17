@@ -50,6 +50,9 @@ type Project struct {
 }
 
 // DataDir returns the root zolam data directory, honouring ZOLAM_DATA_DIR.
+// It holds only the embedded Python script cache and the legacy
+// ChromaDB/Docker state; v3 project data lives in the project's own
+// directory (see ProjectJSONPath), not here.
 func DataDir() (string, error) {
 	if d := os.Getenv("ZOLAM_DATA_DIR"); d != "" {
 		return d, nil
@@ -61,13 +64,12 @@ func DataDir() (string, error) {
 	return filepath.Join(home, ".zolam"), nil
 }
 
-// ProjectDir returns the directory for a named project under the data dir.
-func ProjectDir(name string) (string, error) {
-	base, err := DataDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(base, name), nil
+// LocalProjectDir returns the hidden .zolam/ subdirectory of root (normally
+// the current working directory) where a v3 project's files live, replacing
+// the old global ~/.zolam/<name> registry: a project is just "the directory
+// with a .zolam/ folder in it".
+func LocalProjectDir(root string) string {
+	return filepath.Join(root, ".zolam")
 }
 
 // ProjectJSONPath returns the path to a project's project.json.
@@ -131,35 +133,10 @@ func New(backend string, sourceDirs, extensions []string) *Project {
 	}
 }
 
-// ListProjectNames returns the names of every v3 project (a directory
-// under the data dir containing a project.json) plus legacy chroma
-// project dirs, sorted is left to the caller.
-func ListProjectNames() ([]string, error) {
-	base, err := DataDir()
-	if err != nil {
-		return nil, err
-	}
-	entries, err := os.ReadDir(base)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	var names []string
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		dir := filepath.Join(base, e.Name())
-		if Exists(dir) {
-			names = append(names, e.Name())
-		}
-	}
-	return names, nil
-}
-
-// Remove deletes a project's entire directory.
+// Remove deletes a project's entire .zolam/ directory (project.json,
+// hashes, index, sidecars). Safe to RemoveAll: projectDir is always a
+// dedicated .zolam/ folder that zolam exclusively owns, never the user's
+// working directory itself.
 func Remove(projectDir string) error {
 	return os.RemoveAll(projectDir)
 }

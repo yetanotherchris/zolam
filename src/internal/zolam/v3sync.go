@@ -2,17 +2,21 @@ package zolam
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/yetanotherchris/zolam/internal/domain"
 )
 
-// V3SyncOptions controls a flat-file (duckdb/jsonl) ingest or update run.
+// V3SyncOptions controls a flat-file (duckdb/jsonl) ingest run.
 type V3SyncOptions struct {
-	ProjectName string
+	// Root is the directory whose .zolam/ subdirectory holds the project's
+	// files. Empty means the current working directory.
+	Root string
 	// Dirs, when non-empty, sets/overrides the project's source_dirs. When
-	// empty on an existing project, the stored source_dirs are used.
+	// empty on an existing project, the stored source_dirs are used; when
+	// empty on a brand new project, Root itself is used.
 	Dirs []string
 	// Extensions and Backend only matter when creating a brand new project;
 	// they are ignored (a stored mismatch on Backend is an error) once a
@@ -22,15 +26,31 @@ type V3SyncOptions struct {
 	Reset      bool
 }
 
-// RunV3Sync creates or loads a flat-file project, diffs the current file
-// set on disk against file-hashes.json, invokes the embedded Python
-// pipeline for added/changed/removed files, and regenerates index.md.
-// Both `zolam ingest` and `zolam update` call this for non-chroma backends.
+// ResolveRoot returns dir as an absolute path, defaulting to the current
+// working directory when dir is empty.
+func ResolveRoot(dir string) (string, error) {
+	if dir == "" {
+		wd, err := os.Getwd()
+		if err != nil {
+			return "", fmt.Errorf("finding working directory: %w", err)
+		}
+		return wd, nil
+	}
+	return filepath.Abs(dir)
+}
+
+// RunV3Sync creates or loads a flat-file project in Root's .zolam/
+// subdirectory, diffs the current file set on disk against
+// file-hashes.json, invokes the embedded Python pipeline for
+// added/changed/removed files, and regenerates index.md. `zolam ingest`
+// calls this for every run (both first-time ingest and incremental
+// re-sync).
 func RunV3Sync(opts V3SyncOptions, outputFn func(string)) (*UpdateResult, *domain.Project, error) {
-	projectDir, err := domain.ProjectDir(opts.ProjectName)
+	root, err := ResolveRoot(opts.Root)
 	if err != nil {
 		return nil, nil, err
 	}
+	projectDir := domain.LocalProjectDir(root)
 
 	if opts.Reset {
 		if err := domain.Remove(projectDir); err != nil {
@@ -38,16 +58,13 @@ func RunV3Sync(opts V3SyncOptions, outputFn func(string)) (*UpdateResult, *domai
 		}
 	}
 
-	project, err := loadOrCreateProject(projectDir, opts)
+	project, err := loadOrCreateProject(projectDir, root, opts)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	if project.Backend == "chroma" {
-		return nil, nil, fmt.Errorf("project %q uses the legacy chroma backend; manage it with 'zolam chromadb'/'zolam collections', not the v3 flat-file pipeline", opts.ProjectName)
-	}
 	if project.EmbeddingModel != domain.DefaultEmbeddingModel {
-		return nil, nil, fmt.Errorf("project %q was indexed with embedding model %q, but zolam now defaults to %q; re-run with --reset to re-index", opts.ProjectName, project.EmbeddingModel, domain.DefaultEmbeddingModel)
+		return nil, nil, fmt.Errorf("this project was indexed with embedding model %q, but zolam now defaults to %q; re-run with --reset to re-index", project.EmbeddingModel, domain.DefaultEmbeddingModel)
 	}
 
 	oldHashes, err := LoadFileHashes(projectDir)
@@ -101,30 +118,31 @@ func RunV3Sync(opts V3SyncOptions, outputFn func(string)) (*UpdateResult, *domai
 		return nil, nil, err
 	}
 
-	if err := GenerateIndexMD(project, opts.ProjectName, projectDir, newHashes); err != nil {
+	if err := GenerateIndexMD(project, filepath.Base(root), projectDir, newHashes); err != nil {
 		return nil, nil, err
 	}
 
 	return result, project, nil
 }
 
-func loadOrCreateProject(projectDir string, opts V3SyncOptions) (*domain.Project, error) {
+func loadOrCreateProject(projectDir, root string, opts V3SyncOptions) (*domain.Project, error) {
 	if !domain.Exists(projectDir) {
-		if len(opts.Dirs) == 0 {
-			return nil, fmt.Errorf("project %q does not exist yet; specify at least one directory to ingest", opts.ProjectName)
+		dirs := opts.Dirs
+		if len(dirs) == 0 {
+			dirs = []string{root}
 		}
 		backend := opts.Backend
 		if backend == "" {
 			backend = domain.DefaultBackend
 		}
-		if !domain.IsValidBackend(backend) {
-			return nil, fmt.Errorf("unknown backend %q (expected duckdb, jsonl, or chroma)", backend)
+		if backend != "duckdb" && backend != "jsonl" {
+			return nil, fmt.Errorf("unknown backend %q (expected duckdb or jsonl; the legacy chroma backend is managed separately via 'zolam chromadb')", backend)
 		}
 		extensions := opts.Extensions
 		if len(extensions) == 0 {
 			extensions = SupportedFileExtensions
 		}
-		absDirs, err := absPaths(opts.Dirs)
+		absDirs, err := absPaths(dirs)
 		if err != nil {
 			return nil, err
 		}
@@ -133,10 +151,10 @@ func loadOrCreateProject(projectDir string, opts V3SyncOptions) (*domain.Project
 
 	project, err := domain.Load(projectDir)
 	if err != nil {
-		return nil, fmt.Errorf("loading project %q: %w", opts.ProjectName, err)
+		return nil, fmt.Errorf("loading project in %s: %w", projectDir, err)
 	}
 	if opts.Backend != "" && opts.Backend != project.Backend {
-		return nil, fmt.Errorf("project %q was created with backend %q; use --reset to switch to %q", opts.ProjectName, project.Backend, opts.Backend)
+		return nil, fmt.Errorf("this project was created with backend %q; use --reset to switch to %q", project.Backend, opts.Backend)
 	}
 	if len(opts.Dirs) > 0 {
 		absDirs, err := absPaths(opts.Dirs)
@@ -151,26 +169,25 @@ func loadOrCreateProject(projectDir string, opts V3SyncOptions) (*domain.Project
 	return project, nil
 }
 
-// LoadV3Project loads an existing flat-file project by name, returning a
-// clear, actionable error if it doesn't exist, uses the legacy chroma
-// backend, or was indexed with a now-unsupported embedding model.
-func LoadV3Project(name string) (*domain.Project, string, error) {
-	projectDir, err := domain.ProjectDir(name)
+// LoadV3Project loads an existing flat-file project from dir's .zolam/
+// subdirectory (dir defaulting to the current working directory),
+// returning a clear, actionable error if it doesn't exist or was indexed
+// with a now-unsupported embedding model.
+func LoadV3Project(dir string) (*domain.Project, string, error) {
+	root, err := ResolveRoot(dir)
 	if err != nil {
 		return nil, "", err
 	}
+	projectDir := domain.LocalProjectDir(root)
 	if !domain.Exists(projectDir) {
-		return nil, "", fmt.Errorf("no project named %q; run 'zolam ingest <dirs> --project %s' first", name, name)
+		return nil, "", fmt.Errorf("no zolam project in %s; run 'zolam ingest' there first", root)
 	}
 	project, err := domain.Load(projectDir)
 	if err != nil {
-		return nil, "", fmt.Errorf("loading project %q: %w", name, err)
-	}
-	if project.Backend == "chroma" {
-		return nil, "", fmt.Errorf("project %q uses the legacy chroma backend; 'zolam query' only supports duckdb/jsonl projects", name)
+		return nil, "", fmt.Errorf("loading project in %s: %w", projectDir, err)
 	}
 	if project.EmbeddingModel != domain.DefaultEmbeddingModel {
-		return nil, "", fmt.Errorf("project %q was indexed with embedding model %q, but zolam now defaults to %q; re-run 'zolam ingest --reset' to re-index", name, project.EmbeddingModel, domain.DefaultEmbeddingModel)
+		return nil, "", fmt.Errorf("this project was indexed with embedding model %q, but zolam now defaults to %q; re-run 'zolam ingest --reset' to re-index", project.EmbeddingModel, domain.DefaultEmbeddingModel)
 	}
 	return project, projectDir, nil
 }

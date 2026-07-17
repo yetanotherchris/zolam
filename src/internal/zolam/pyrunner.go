@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -117,6 +118,11 @@ func runPythonScript(args []string, outputFn func(string)) ([]byte, error) {
 
 	cmdArgs := append([]string{"run", scriptPath}, args...)
 	cmd := exec.Command("uv", cmdArgs...)
+	// Windows without Developer Mode/admin can't create symlinks, so the
+	// huggingface_hub cache falls back to copies; that's expected here and
+	// not worth surfacing as a warning on every ingest.
+	cmd.Env = append(os.Environ(), "HF_HUB_DISABLE_SYMLINKS_WARNING=1")
+	setProcessGroup(cmd)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -130,6 +136,24 @@ func runPythonScript(args []string, outputFn func(string)) ([]byte, error) {
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("starting uv run %s: %w", scriptPath, err)
 	}
+
+	// uv run spawns python (and its own subprocesses) as a genuine child
+	// tree; without this, Ctrl+C only kills the zolam process and leaves
+	// ingest.py running as an orphan.
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt)
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-sigCh:
+			killProcessTree(cmd)
+		case <-done:
+		}
+	}()
+	defer func() {
+		signal.Stop(sigCh)
+		close(done)
+	}()
 
 	var outBuf bytes.Buffer
 	var lastLines []string
