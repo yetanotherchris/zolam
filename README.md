@@ -163,6 +163,22 @@ zolam collections list                                            # list chroma 
 There's no automated migration path from `chroma` to `duckdb`/`jsonl` —
 re-ingest your source directories into a new project with `zolam ingest`.
 
+## Why Python?
+
+The ingest pipeline (text extraction, chunking, embedding) runs as an
+embedded Python script rather than pure Go, mainly because of the embedding
+step: generating vectors with `all-MiniLM-L6-v2` needs an ONNX inference
+runtime plus a matching BERT/WordPiece tokenizer, and Python's ecosystem
+(`onnxruntime`, `transformers`) has both, mature and battle-tested.
+
+A Go-only pipeline is possible but not yet a clean swap:
+- [`onnxruntime.ai`](https://onnxruntime.ai/docs/) has no official Go API — you'd rely on a community CGo binding like [`yalue/onnxruntime_go`](https://github.com/yalue/onnxruntime_go), trading a static Go binary for CGo plus a bundled native `onnxruntime` shared library per platform.
+- Go still lacks a mature, bit-exact WordPiece tokenizer for `all-MiniLM-L6-v2`, so tokenization would need to be built and verified against the Python output to avoid silently different embeddings.
+- PDF/DOCX extraction, however, has solid pure-Go options — [`gopdf`](https://github.com/razvandimescu/gopdf) and [`go-docx`](https://github.com/fumiama/go-docx) — so that half of the pipeline could move to Go today.
+
+`uv` keeps the Python dependency painless (no manual install, auto-provisioned
+on first run), so it stays for now.
+
 ## Building from Source
 
 ```bash
