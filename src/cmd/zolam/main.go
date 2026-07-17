@@ -7,12 +7,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 	"unicode"
 
 	"github.com/spf13/cobra"
 	"github.com/yetanotherchris/zolam/internal/docker"
+	"github.com/yetanotherchris/zolam/internal/domain"
 	"github.com/yetanotherchris/zolam/internal/zolam"
 )
 
@@ -74,9 +76,12 @@ func registerOpencodeMCP() error {
 
 func main() {
 	rootCmd := &cobra.Command{
-		Use:     "zolam",
-		Short:   "Semantic search file ingester for ChromaDB",
-		Long:    "A CLI tool for ingesting files into ChromaDB for semantic search via Claude.",
+		Use:   "zolam",
+		Short: "Daemon-free semantic search over your personal files",
+		Long: "A CLI tool that ingests files into a per-project flat-file index (duckdb/jsonl) for\n" +
+			"semantic search via Claude Code/OpenCode, with no background service required.\n" +
+			"The legacy ChromaDB/Docker/MCP workflow (--backend chroma, 'zolam chromadb', 'zolam mcp')\n" +
+			"is still supported but deprecated.",
 		Version: version,
 	}
 	rootCmd.CompletionOptions.DisableDefaultCmd = true
@@ -84,6 +89,9 @@ func main() {
 	rootCmd.AddCommand(
 		newIngestCmd(),
 		newUpdateCmd(),
+		newQueryCmd(),
+		newProjectsCmd(),
+		newInitCmd(),
 		newChromaDBCmd(),
 		newCollectionsCmd(),
 		newMcpCmd(),
@@ -100,6 +108,23 @@ func requireChromaDB(dc *docker.DockerClient) error {
 		return nil
 	}
 	return fmt.Errorf("ChromaDB is not running. Start it first with: zolam chromadb start")
+}
+
+// printDeprecationNotice warns on stderr that a command belongs to the
+// legacy ChromaDB/Docker/MCP workflow, without interrupting its output.
+func printDeprecationNotice(oldCmd, newCmd string) {
+	fmt.Fprintf(os.Stderr, "Note: %q is part of the deprecated ChromaDB/Docker workflow. See %q for the v3 daemon-free workflow.\n\n", oldCmd, newCmd)
+}
+
+// truncateForDisplay collapses whitespace and caps length for terminal
+// query output; use --json for the untruncated text.
+func truncateForDisplay(text string) string {
+	text = strings.Join(strings.Fields(text), " ")
+	const maxLen = 300
+	if len(text) > maxLen {
+		return text[:maxLen] + "..."
+	}
+	return text
 }
 
 func initServices() (*docker.DockerClient, *zolam.Ingester, error) {
@@ -164,20 +189,49 @@ func splitArgsFromExtensions(args []string, extensions []string) (dirs []string,
 	return dirs, exts
 }
 
+// runLegacyIngest runs the pre-v3 Docker/ChromaDB ingest pipeline unchanged.
+func runLegacyIngest(dirs []string, collection string, exts []string, reset bool) error {
+	printDeprecationNotice("--backend chroma", "zolam ingest --backend duckdb (default) or jsonl")
+
+	dc, ing, err := initServices()
+	if err != nil {
+		return err
+	}
+	if err := requireChromaDB(dc); err != nil {
+		return err
+	}
+	result, err := ing.RunSync(dirs, collection, exts, reset, func(line string) {
+		fmt.Println(line)
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Printf("\nSync complete: %d new, %d changed, %d removed, %d unchanged\n",
+		result.Added, result.Changed, result.Removed, result.Unchanged)
+	return nil
+}
+
 func newIngestCmd() *cobra.Command {
 	var extensions []string
+	var project string
 	var collection string
+	var backend string
 	var reset bool
 
 	cmd := &cobra.Command{
 		Use:   "ingest [directories...]",
-		Short: "Run the full ingestion pipeline",
-		Long:  "Ingest files from specified directories into ChromaDB for semantic search.",
-		Args:  cobra.MinimumNArgs(1),
+		Short: "Ingest files into a project's search index",
+		Long: "Ingest files from one or more directories into a project index.\n" +
+			"Defaults to the daemon-free duckdb backend (no Docker required);\n" +
+			"pass --backend chroma for the legacy Docker/ChromaDB pipeline.",
+		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			dc, ing, err := initServices()
-			if err != nil {
-				return err
+			name := project
+			if name == "" {
+				name = collection
+			}
+			if name == "" {
+				return fmt.Errorf("--project is required")
 			}
 
 			dirs, exts := splitArgsFromExtensions(args, extensions)
@@ -185,66 +239,252 @@ func newIngestCmd() *cobra.Command {
 				return fmt.Errorf("no directories specified")
 			}
 
-			if err := requireChromaDB(dc); err != nil {
-				return err
+			if backend == "chroma" {
+				return runLegacyIngest(dirs, name, exts, reset)
 			}
 
-			result, err := ing.RunSync(dirs, collection, exts, reset, func(line string) {
+			result, proj, err := zolam.RunV3Sync(zolam.V3SyncOptions{
+				ProjectName: name,
+				Dirs:        dirs,
+				Extensions:  exts,
+				Backend:     backend,
+				Reset:       reset,
+			}, func(line string) {
 				fmt.Println(line)
 			})
 			if err != nil {
 				return err
 			}
-			fmt.Printf("\nSync complete: %d new, %d changed, %d removed, %d unchanged\n",
-				result.Added, result.Changed, result.Removed, result.Unchanged)
+			fmt.Printf("\nIngest complete (%s backend): %d new, %d changed, %d removed, %d unchanged\n",
+				proj.Backend, result.Added, result.Changed, result.Removed, result.Unchanged)
 			return nil
 		},
 	}
 
 	cmd.Flags().StringSliceVar(&extensions, "extensions", nil, "File extensions to include (e.g. .md,.txt)")
-	cmd.Flags().StringVar(&collection, "collection", "", "ChromaDB collection name")
-	cmd.Flags().BoolVar(&reset, "reset", false, "Reset collection before ingesting")
-	cmd.MarkFlagRequired("collection")
+	cmd.Flags().StringVar(&project, "project", "", "Project name")
+	cmd.Flags().StringVar(&collection, "collection", "", "Deprecated alias for --project")
+	cmd.Flags().MarkHidden("collection")
+	cmd.Flags().StringVar(&backend, "backend", "", "Index backend: duckdb (default), jsonl, or chroma (legacy)")
+	cmd.Flags().BoolVar(&reset, "reset", false, "Delete the project and re-ingest from scratch")
 	cmd.MarkFlagRequired("extensions")
 
 	return cmd
 }
 
 func newUpdateCmd() *cobra.Command {
+	var project string
 	var collection string
+	var backend string
 
 	cmd := &cobra.Command{
-		Use:   "update <directories...>",
-		Short: "Re-ingest only changed files",
-		Long:  "Scan directories and re-ingest only files whose content has changed since last run.",
-		Args:  cobra.MinimumNArgs(1),
+		Use:   "update [directories...]",
+		Short: "Re-ingest only files that have changed",
+		Long: "Re-ingest only files whose content has changed since the last ingest/update.\n" +
+			"For duckdb/jsonl projects, directories default to those recorded in project.json.",
+		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			dc, ing, err := initServices()
+			name := project
+			if name == "" {
+				name = collection
+			}
+			if name == "" {
+				return fmt.Errorf("--project is required")
+			}
+
+			projectDir, err := domain.ProjectDir(name)
 			if err != nil {
 				return err
 			}
 
-			if err := requireChromaDB(dc); err != nil {
-				return err
+			// Legacy chroma collections never had a project.json. Treat a
+			// never-before-seen name as the pre-v3 workflow unless a v3
+			// backend was explicitly requested.
+			if backend == "chroma" || (!domain.Exists(projectDir) && backend == "") {
+				if len(args) == 0 {
+					return fmt.Errorf("directories are required for the legacy chroma backend")
+				}
+				return runLegacyIngest(args, name, nil, false)
 			}
 
-			result, err := ing.RunSync(args, collection, nil, false, func(line string) {
+			result, proj, err := zolam.RunV3Sync(zolam.V3SyncOptions{
+				ProjectName: name,
+				Dirs:        args,
+				Backend:     backend,
+			}, func(line string) {
 				fmt.Println(line)
 			})
 			if err != nil {
 				return err
 			}
 
-			fmt.Printf("\nUpdate complete: %d new, %d changed, %d removed, %d unchanged\n",
-				result.Added, result.Changed, result.Removed, result.Unchanged)
+			fmt.Printf("\nUpdate complete (%s backend): %d new, %d changed, %d removed, %d unchanged\n",
+				proj.Backend, result.Added, result.Changed, result.Removed, result.Unchanged)
 			return nil
 		},
 	}
 
-	cmd.Flags().StringVar(&collection, "collection", "", "ChromaDB collection name")
-	cmd.MarkFlagRequired("collection")
+	cmd.Flags().StringVar(&project, "project", "", "Project name")
+	cmd.Flags().StringVar(&collection, "collection", "", "Deprecated alias for --project")
+	cmd.Flags().MarkHidden("collection")
+	cmd.Flags().StringVar(&backend, "backend", "", "Force a backend (duckdb, jsonl, or chroma); normally inferred from the existing project")
 
 	return cmd
+}
+
+func newQueryCmd() *cobra.Command {
+	var project string
+	var topK int
+	var keyword bool
+	var jsonOut bool
+
+	cmd := &cobra.Command{
+		Use:   "query <text>",
+		Short: "Search a project's flat-file index",
+		Long:  "Semantic (default) or keyword (--keyword) search against a duckdb/jsonl project index.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if project == "" {
+				return fmt.Errorf("--project is required")
+			}
+
+			proj, projectDir, err := zolam.LoadV3Project(project)
+			if err != nil {
+				return err
+			}
+
+			resp, err := zolam.RunQuery(proj, projectDir, args[0], topK, keyword, func(line string) {
+				fmt.Fprintln(os.Stderr, line)
+			})
+			if err != nil {
+				return err
+			}
+
+			if jsonOut {
+				enc := json.NewEncoder(os.Stdout)
+				enc.SetIndent("", "  ")
+				return enc.Encode(resp)
+			}
+
+			if len(resp.Results) == 0 {
+				fmt.Println("No results.")
+				return nil
+			}
+			for i, hit := range resp.Results {
+				loc := fmt.Sprintf("chunk %d", hit.Chunk)
+				if hit.Page != nil {
+					loc = fmt.Sprintf("page %d, chunk %d", *hit.Page, hit.Chunk)
+				}
+				if hit.Score != nil {
+					fmt.Printf("%d. [%.2f] %s  (%s)\n", i+1, *hit.Score, hit.Path, loc)
+				} else {
+					fmt.Printf("%d. %s  (%s)\n", i+1, hit.Path, loc)
+				}
+				fmt.Printf("   %s\n\n", truncateForDisplay(hit.Text))
+			}
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&project, "project", "", "Project name")
+	cmd.Flags().IntVar(&topK, "top-k", 5, "Number of results to return")
+	cmd.Flags().BoolVar(&keyword, "keyword", false, "Keyword search instead of semantic search")
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "Output machine-readable JSON")
+
+	return cmd
+}
+
+func newProjectsCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "projects",
+		Short: "Manage v3 flat-file projects (duckdb/jsonl)",
+	}
+
+	listCmd := &cobra.Command{
+		Use:   "list",
+		Short: "List all projects",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			names, err := domain.ListProjectNames()
+			if err != nil {
+				return err
+			}
+			if len(names) == 0 {
+				fmt.Println("No projects found. Run 'zolam ingest <dirs> --project <name>' to create one.")
+				return nil
+			}
+			sort.Strings(names)
+			for _, name := range names {
+				dir, err := domain.ProjectDir(name)
+				if err != nil {
+					return err
+				}
+				proj, err := domain.Load(dir)
+				if err != nil {
+					fmt.Printf("%s\t(error reading project.json: %v)\n", name, err)
+					continue
+				}
+				hashes, _ := zolam.LoadFileHashes(dir)
+				fmt.Printf("%-20s backend=%-8s files=%-6d model=%s last_ingest=%s\n",
+					name, proj.Backend, len(hashes), proj.EmbeddingModel, proj.LastIngest.Format("2006-01-02 15:04"))
+			}
+			return nil
+		},
+	}
+
+	removeCmd := &cobra.Command{
+		Use:   "remove <name>",
+		Short: "Delete a project (index, sidecars, and metadata)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			dir, err := domain.ProjectDir(args[0])
+			if err != nil {
+				return err
+			}
+			if !domain.Exists(dir) {
+				return fmt.Errorf("no project named %q", args[0])
+			}
+			if err := domain.Remove(dir); err != nil {
+				return err
+			}
+			fmt.Printf("Removed project %q.\n", args[0])
+			return nil
+		},
+	}
+
+	cmd.AddCommand(listCmd, removeCmd)
+	return cmd
+}
+
+func newInitCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "init <claude|opencode>",
+		Short: "Install AI-tool integration for zolam v3 (skill/instructions, no MCP)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			switch args[0] {
+			case "claude":
+				path, err := zolam.WriteClaudeSkill()
+				if err != nil {
+					return err
+				}
+				fmt.Printf("Installed skill: %s\n\n", path)
+				fmt.Println("Suggested addition to a repo's CLAUDE.md:")
+				fmt.Println()
+				fmt.Print(zolam.ClaudeSkillSnippet)
+				return nil
+			case "opencode":
+				path, err := zolam.WriteOpencodeInstructions()
+				if err != nil {
+					return err
+				}
+				fmt.Printf("Installed instructions: %s\n", path)
+				fmt.Println("Verify this matches OpenCode's current custom-instructions convention; it may change between releases.")
+				return nil
+			default:
+				return fmt.Errorf("unsupported target %q, supported: claude, opencode", args[0])
+			}
+		},
+	}
 }
 
 func newChromaDBCmd() *cobra.Command {
@@ -254,6 +494,8 @@ func newChromaDBCmd() *cobra.Command {
 		Long:  "Start, stop, or check the status of the ChromaDB Docker container.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			printDeprecationNotice("zolam chromadb", "zolam ingest/update/query (duckdb or jsonl backend)")
+
 			dc, _, err := initServices()
 			if err != nil {
 				return err
@@ -303,7 +545,11 @@ func newChromaDBCmd() *cobra.Command {
 func newCollectionsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "collections",
-		Short: "Manage ChromaDB collections",
+		Short: "Manage ChromaDB collections (deprecated, see 'zolam projects')",
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			printDeprecationNotice("zolam collections", "zolam projects")
+			return nil
+		},
 	}
 
 	listCmd := &cobra.Command{
@@ -393,6 +639,8 @@ func newMcpCmd() *cobra.Command {
 		Long:  "Register the chroma-mcp MCP server with an AI provider. Supported providers: claude, opencode.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			printDeprecationNotice("zolam mcp", "zolam init claude/opencode")
+
 			provider := args[0]
 			switch provider {
 			case "claude":
