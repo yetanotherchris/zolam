@@ -19,6 +19,21 @@ commands that start, do their work, and exit.
 **Prerequisite:** [uv](https://docs.astral.sh/uv/getting-started/installation/) (`brew install uv`, `winget install astral-sh.uv`, or `scoop install uv`). uv provisions Python and every pipeline dependency itself on first run.
 
 ```bash
+# Install uv (macOS/Linux)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install uv (macOS, Homebrew)
+brew install uv
+
+# Install uv (Windows, winget)
+winget install astral-sh.uv
+
+# Install uv (Windows, Scoop)
+scoop install uv
+
+# Install uv (Windows, PowerShell)
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+
 # Ingest files into a project (defaults to the duckdb backend)
 zolam ingest ~/notes --project my-project --extensions .md,.pdf
 
