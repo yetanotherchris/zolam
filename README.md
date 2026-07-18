@@ -50,7 +50,6 @@ zolam init claude
 The following are stored in the `.zolam` directory:
 
 ```
-~/notes/.zolam/
   project.json         # metadata for the ingestion
   index.duckdb         # (or index.jsonl) the vector index
   index.md             # human-readable summary of every indexed file
