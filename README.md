@@ -4,7 +4,6 @@ Ingest your personal files (PDF, Markdown, Docx, Txt, code) into a local flat-fi
 
 Zolam is a Go CLI that walks your directories, extracting and chunking text (via Python), hashes files for incremental updates, and generates a human-readable `index.md` summary.  It stores what it needs in `.zolam` directory.
 
-
 ## Quick Start
 
 ```bash
@@ -13,6 +12,13 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 brew install uv             # macOS/Linux
 winget install astral-sh.uv # Windows
 scoop install uv            # Windows
+
+# MacOS/Linux
+brew install yetanotherchris/tap/zolam
+
+# Windows
+scoop bucket add zolam https://github.com/yetanotherchris/zolam
+scoop install zolam
 
 # Optional: Tesseract, for OCR on scanned PDFs with no text layer
 brew install tesseract       # macOS/Linux
@@ -52,16 +58,6 @@ The following are stored in the `.zolam` directory:
   file-hashes.json     # incremental-update state
 ```
 
-### Installation
-
-```bash
-# MacOS/Linux
-brew install yetanotherchris/tap/zolam
-
-# Windows
-scoop bucket add zolam https://github.com/yetanotherchris/zolam
-scoop install zolam
-```
 
 ## Index backends
 
@@ -72,13 +68,6 @@ Set with `--backend` on first `ingest` (recorded thereafter in `project.json`):
 | `duckdb` (default) | General use — SQL-queryable, supports keyword (`ILIKE`) search alongside semantic search. |
 | `jsonl` | You want the index itself to be plain-text: greppable, diffable, easy to inspect or version. |
 | `chroma` (legacy) | You're already using the pre-v3 ChromaDB/Docker/MCP workflow and want to keep doing so. |
-
-## Environment Variables
-
-| Variable | Default | Description |
-|---|---|---|
-| `ZOLAM_DATA_DIR` | `~/.zolam` | Cache directory for the embedded Python pipeline script (project data itself lives in each project's own `.zolam/` folder) |
-| `ZOLAM_CHROMADB_DATA_DIR` | `~/.zolam/chromadb` | Legacy `--backend chroma` ChromaDB persistent storage path |
 
 ## Supported File Extensions
 
