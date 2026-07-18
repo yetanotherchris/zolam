@@ -82,7 +82,7 @@ func RunV3Sync(opts V3SyncOptions, outputFn func(string)) (*UpdateResult, *domai
 
 	newHashes := make(map[string]string)
 	for _, dir := range project.SourceDirs {
-		hashes, err := HashDirectory(dir, project.Extensions)
+		hashes, err := HashDirectory(dir, root, project.Extensions)
 		if err != nil {
 			return nil, nil, fmt.Errorf("hashing directory %s: %w", dir, err)
 		}
@@ -126,7 +126,7 @@ func RunV3Sync(opts V3SyncOptions, outputFn func(string)) (*UpdateResult, *domai
 		return nil, nil, err
 	}
 
-	if err := GenerateIndexMD(project, filepath.Base(root), projectDir, newHashes); err != nil {
+	if err := GenerateIndexMD(project, filepath.Base(root), projectDir, root, newHashes); err != nil {
 		return nil, nil, err
 	}
 

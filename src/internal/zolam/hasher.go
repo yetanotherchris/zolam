@@ -3,6 +3,7 @@ package zolam
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -29,9 +30,11 @@ func ComputeHash(path string) (string, error) {
 
 // HashDirectory walks dir and computes SHA-256 hashes for every file whose
 // extension matches one of the provided extensions. It returns a map from
-// file path to hex-encoded hash. Files are hashed concurrently using a worker
-// pool sized to runtime.NumCPU().
-func HashDirectory(dir string, extensions []string) (map[string]string, error) {
+// file path (relative to root, since a zolam project is portable per
+// directory and shouldn't persist the local absolute filesystem layout) to
+// hex-encoded hash. Files are hashed concurrently using a worker pool sized
+// to runtime.NumCPU().
+func HashDirectory(dir, root string, extensions []string) (map[string]string, error) {
 	extSet := make(map[string]bool, len(extensions))
 	for _, ext := range extensions {
 		e := ext
@@ -108,7 +111,11 @@ func HashDirectory(dir string, extensions []string) (map[string]string, error) {
 		if r.err != nil {
 			return nil, r.err
 		}
-		hashes[r.path] = r.hash
+		rel, err := filepath.Rel(root, r.path)
+		if err != nil {
+			return nil, fmt.Errorf("computing relative path for %s: %w", r.path, err)
+		}
+		hashes[rel] = r.hash
 	}
 
 	return hashes, nil
