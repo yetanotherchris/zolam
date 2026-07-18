@@ -42,10 +42,22 @@ zolam ingest
 
 # Ask a question — semantic search over the indexed chunks
 zolam query "what did we agree on renewal terms?"
-
-# Install the Claude Code skill so Claude can search your files itself
-zolam init claude
 ```
+
+### Claude Code / OpenCode skill
+
+Install the zolam skill so Claude Code or OpenCode can search your files
+itself, using [`npx skills`](https://github.com/vercel-labs/skills):
+
+```bash
+npx skills add https://github.com/yetanotherchris/zolam
+```
+
+This installs `skills/zolam/SKILL.md` from this repo into your agent's
+skill directory (e.g. `~/.claude/skills/` or `~/.config/opencode/skills/`).
+
+
+## .zolam directory
 
 The following are stored in the `.zolam` directory:
 
@@ -57,10 +69,7 @@ The following are stored in the `.zolam` directory:
   file-hashes.json     # incremental-update state
 ```
 
-
-## Index backends
-
-Set with `--backend` on first `ingest` (recorded thereafter in `project.json`):
+You can change the way the text and embeds are stored with `--backend` on first `ingest` (recorded thereafter in `project.json`):
 
 | Backend | When to use |
 |---|---|
