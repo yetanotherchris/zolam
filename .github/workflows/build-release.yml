@@ -142,7 +142,17 @@ jobs:
         working-directory: src
         env:
           CGO_ENABLED: "1"
-        run: go build -ldflags="-X main.version=${{ steps.version.outputs.VERSION }} -s -w" -o zolam.exe ./cmd/zolam/
+        run: |
+          set -e
+          # gosseract's cgo bridge hardcodes -L/usr/local/lib for its
+          # tesseract/leptonica LDFLAGS, which doesn't exist here — the
+          # MSYS2 packages installed above live under the MINGW64
+          # prefix instead. Point CGO at it explicitly (same fix as
+          # the macOS leg above, adapted for MSYS2's path).
+          export CGO_CFLAGS="-I$(cygpath -m /mingw64/include)"
+          export CGO_CXXFLAGS="-I$(cygpath -m /mingw64/include)"
+          export CGO_LDFLAGS="-L$(cygpath -m /mingw64/lib)"
+          go build -ldflags="-X main.version=${{ steps.version.outputs.VERSION }} -s -w" -o zolam.exe ./cmd/zolam/
 
       - name: Build (Linux/macOS)
         if: runner.os != 'Windows'
