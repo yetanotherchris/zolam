@@ -45,12 +45,13 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: "1.24"
+          cache-dependency-path: src/go.sum
 
       - name: Install Tesseract/Leptonica dev libraries (Linux)
         if: runner.os == 'Linux'
@@ -60,6 +61,12 @@ jobs:
 
       - name: Install Tesseract/Leptonica dev libraries (macOS)
         if: runner.os == 'macOS'
+        env:
+          # The macOS runner image ships with taps (e.g. aws/tap) that
+          # Homebrew's tap-trust model doesn't trust by default; brew
+          # warns about them on every invocation even though we only
+          # install from homebrew-core. See https://docs.brew.sh/Tap-Trust
+          HOMEBREW_NO_REQUIRE_TAP_TRUST: "1"
         run: |
           brew install tesseract pkg-config
           # gosseract's cgo bridge has no #cgo CFLAGS/LDFLAGS of its own and
@@ -144,7 +151,7 @@ jobs:
         run: mv src/zolam.exe zolam-${{ matrix.suffix }}.exe
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: zolam-${{ matrix.suffix }}
           path: zolam-${{ matrix.suffix }}*
@@ -156,7 +163,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -168,7 +175,7 @@ jobs:
           echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           path: artifacts
           merge-multiple: true
