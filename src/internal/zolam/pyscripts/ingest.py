@@ -134,11 +134,25 @@ def read_plain(path: Path) -> str:
 
 
 def extract_pdf_pages(path: Path) -> list[str]:
+    """Extract each page's text layer, falling back to OCR (via PyMuPDF's
+    Tesseract integration) for pages with no embedded text, e.g. scanned
+    PDFs. OCR needs Tesseract installed on the host; if it's unavailable
+    the page is left as its (empty) text-layer result rather than failing
+    the whole file."""
     import fitz  # pymupdf
 
     doc = fitz.open(str(path))
     try:
-        return [page.get_text() for page in doc]
+        pages = []
+        for page in doc:
+            text = page.get_text()
+            if not text.strip():
+                try:
+                    text = page.get_text(textpage=page.get_textpage_ocr(language="eng"))
+                except Exception as ocr_err:
+                    print(f"  OCR failed {path} page {page.number + 1}: {ocr_err}", file=sys.stderr)
+            pages.append(text)
+        return pages
     finally:
         doc.close()
 

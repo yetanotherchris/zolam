@@ -9,6 +9,14 @@ import (
 	"github.com/yetanotherchris/zolam/internal/domain"
 )
 
+// UpdateResult summarises what changed during a sync.
+type UpdateResult struct {
+	Added     int
+	Changed   int
+	Removed   int
+	Unchanged int
+}
+
 // V3SyncOptions controls a flat-file (duckdb/jsonl) ingest run.
 type V3SyncOptions struct {
 	// Root is the directory whose .zolam/ subdirectory holds the project's
