@@ -1,24 +1,14 @@
 # zolam
 
-Ingest your personal files (PDF, Markdown, Docx, Txt, code) into a local,
-daemon-free flat-file index for semantic search in Claude Code / OpenCode —
-no Docker, no background service.
+Ingest your personal files (PDF, Markdown, Docx, Txt, code) into a local flat-file/DuckDB/ChromaDb index for semantic search in Claude Code / OpenCode. 
 
-Zolam is two parts:
- - A Go CLI that walks your directories, hashes files for incremental
-   updates, and generates a human-readable `index.md` summary.
- - An embedded Python script (run via [`uv`](https://docs.astral.sh/uv/)) that
-   extracts text, chunks it, embeds it locally, and writes a per-project
-   `index.duckdb` or `index.jsonl` file.
+Zolam is a Go CLI that walks your directories, extracting and chunking text (via Python), hashes files for incremental updates, and generates a human-readable `index.md` summary.  It stores what it needs in `.zolam` directory.
 
-Nothing runs between invocations: `ingest`/`query` are batch commands
-that start, do their work, and exit. `ingest` is safe to re-run any
-time — it's both the first-time indexer and the incremental updater.
 
 ## Quick Start
 
 ```bash
-# Install uv 
+# Install uv (required)
 curl -LsSf https://astral.sh/uv/install.sh | sh
 brew install uv             # macOS/Linux
 winget install astral-sh.uv # Windows
@@ -29,10 +19,17 @@ brew install tesseract       # macOS/Linux
 apt install tesseract-ocr    # Linux
 scoop install tesseract              # Windows
 scoop install tesseract-languages    # Windows: language data (eng.traineddata etc.)
+```
 
+### Example usage
+
+Subdirectories are scanned recursively. Binary formats (PDF, DOCX) get a markdown version under `.zolam/extracted/`;
+
+```
 # Ingest files into the current directory's project (defaults to the duckdb backend)
 cd ~/notes
 zolam ingest --extensions .md,.pdf
+zolam ingest ./my-sub-dir
 
 # Safe to re-run any time — only added/changed/removed files are reprocessed
 zolam ingest
@@ -44,35 +41,24 @@ zolam query "what did we agree on renewal terms?"
 zolam init claude
 ```
 
-A project is just a directory with a `.zolam/` folder in it — there's no
-global registry or `--project` flag. `ingest` creates it on first run and
-refreshes it on every subsequent run; `query` looks for it in the current
-directory:
+The following are stored in the `.zolam` directory:
 
 ```
 ~/notes/.zolam/
-  project.json        # backend, embedding model, source dirs, extensions
+  project.json         # metadata for the ingestion
   index.duckdb         # (or index.jsonl) the vector index
   index.md             # human-readable summary of every indexed file
-  extracted/            # markdown sidecars for PDFs/DOCX (grep-able text)
-  file-hashes.json      # incremental-update state
+  extracted/           # markdown sidecars for PDFs/DOCX (grep-able text)
+  file-hashes.json     # incremental-update state
 ```
 
 ### Installation
 
-**Homebrew (macOS/Linux)**
 ```bash
+# MacOS/Linux
 brew install yetanotherchris/tap/zolam
-```
 
-**Winget (Windows)**
-```powershell
-winget install yetanotherchris.zolam
-```
-> Note: the winget package may lag behind the latest release, as each new version requires a PR to the winget-pkgs repository.
-
-**Scoop (Windows)**
-```powershell
+# Windows
 scoop bucket add zolam https://github.com/yetanotherchris/zolam
 scoop install zolam
 ```
@@ -86,57 +72,6 @@ Set with `--backend` on first `ingest` (recorded thereafter in `project.json`):
 | `duckdb` (default) | General use — SQL-queryable, supports keyword (`ILIKE`) search alongside semantic search. |
 | `jsonl` | You want the index itself to be plain-text: greppable, diffable, easy to inspect or version. |
 | `chroma` (legacy) | You're already using the pre-v3 ChromaDB/Docker/MCP workflow and want to keep doing so. |
-
-## Commands
-
-### ingest
-
-Index files into the current directory's project — creating it on first run,
-refreshing it (only added/changed/removed files) on every run after. With no
-arguments it indexes the current directory itself using every supported
-extension; pass one or more directories and/or `--extensions` to narrow it.
-
-```bash
-zolam ingest [dirs...] [--extensions <exts>] [--backend duckdb|jsonl] [--reset]
-
-# Index the current directory (all supported extensions)
-zolam ingest
-
-# Ingest markdown files from a specific directory (duckdb backend)
-zolam ingest ~/notes --extensions .md
-
-# Multiple directories and extensions; re-run any time to pick up changes
-zolam ingest ~/notes ~/docs --extensions .md,.txt,.pdf
-
-# Reset (delete and re-ingest from scratch), e.g. to switch backends
-zolam ingest ~/notes --extensions .md --backend jsonl --reset
-```
-
-Subdirectories are scanned recursively. Binary formats (PDF, DOCX) get a
-markdown sidecar under `.zolam/extracted/`; plain-text/code files are indexed
-and summarized straight from their original path. Directories passed on a
-later run override the `source_dirs` recorded in `.zolam/project.json`;
-omit them to reuse what's already stored.
-
-### query
-
-Search the current directory's index.
-
-```bash
-zolam query "<question>" [--top-k 5] [--keyword] [--json]
-
-zolam query "renewal terms"
-zolam query "invoice" --keyword   # substring/ILIKE, no embedding step
-```
-
-### init
-
-Install AI-tool integration — no MCP server or registration step required.
-
-```bash
-zolam init claude      # installs ~/.claude/skills/zolam/SKILL.md
-zolam init opencode    # installs ~/.config/opencode/AGENTS.md
-```
 
 ## Environment Variables
 
@@ -174,9 +109,6 @@ docker compose --profile ingest run --rm \
   -v /path/to/notes:/sources/notes \
   ingest --directory /sources/notes
 ```
-
-There's no automated migration path from `chroma` to `duckdb`/`jsonl` —
-re-ingest your source directories into a new project with `zolam ingest`.
 
 ## Why Python?
 
