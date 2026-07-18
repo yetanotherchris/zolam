@@ -82,3 +82,47 @@ func TestRunV3Sync_ResyncWithDirsUpdatesSourceDirs(t *testing.T) {
 		t.Errorf("SourceDirs = %v, want [%s]", proj.SourceDirs, other)
 	}
 }
+
+func TestRunV3Update_NoProjectErrors(t *testing.T) {
+	root := t.TempDir()
+
+	_, _, err := RunV3Update(root, false, noopOutput)
+	if err == nil {
+		t.Fatal("expected an error when no project exists yet")
+	}
+	if !strings.Contains(err.Error(), "run 'zolam ingest <dir>' there first") {
+		t.Errorf("error = %q, want a message pointing at 'zolam ingest <dir>'", err.Error())
+	}
+}
+
+func TestRunV3Update_ReusesStoredDirs(t *testing.T) {
+	root := t.TempDir()
+
+	if _, _, err := RunV3Sync(V3SyncOptions{Root: root, Dirs: []string{root}, Backend: "jsonl"}, noopOutput); err != nil {
+		t.Fatalf("first RunV3Sync() returned error: %v", err)
+	}
+
+	_, proj, err := RunV3Update(root, false, noopOutput)
+	if err != nil {
+		t.Fatalf("RunV3Update() returned error: %v", err)
+	}
+	if len(proj.SourceDirs) != 1 || proj.SourceDirs[0] != root {
+		t.Errorf("SourceDirs = %v, want [%s]", proj.SourceDirs, root)
+	}
+}
+
+func TestRunV3Update_ResetReusesStoredDirs(t *testing.T) {
+	root := t.TempDir()
+
+	if _, _, err := RunV3Sync(V3SyncOptions{Root: root, Dirs: []string{root}, Backend: "jsonl"}, noopOutput); err != nil {
+		t.Fatalf("first RunV3Sync() returned error: %v", err)
+	}
+
+	_, proj, err := RunV3Update(root, true, noopOutput)
+	if err != nil {
+		t.Fatalf("RunV3Update(reset=true) returned error: %v", err)
+	}
+	if len(proj.SourceDirs) != 1 || proj.SourceDirs[0] != root {
+		t.Errorf("SourceDirs after reset = %v, want [%s]", proj.SourceDirs, root)
+	}
+}

@@ -41,6 +41,10 @@ zolam ingest ./my-sub-dir
 # based on stored file hashes, but the directory still needs to be named
 zolam ingest ./my-sub-dir
 
+# ...or re-sync without naming directories again, using the ones already
+# recorded in project.json
+zolam ingest update
+
 # Ask a question — semantic search over the indexed chunks
 zolam query "what did we agree on renewal terms?"
 ```

@@ -139,6 +139,32 @@ func RunV3Sync(opts V3SyncOptions, outputFn func(string)) (*UpdateResult, *domai
 	return result, project, nil
 }
 
+// RunV3Update re-syncs an existing project using the source_dirs already
+// recorded in its project.json, so callers (the 'zolam ingest update'
+// subcommand) don't need to name a directory again. Unlike RunV3Sync, it
+// errors if no project exists yet rather than creating one — first-time
+// ingest still requires 'zolam ingest <dir>' to establish source_dirs
+// explicitly.
+func RunV3Update(root string, reset bool, outputFn func(string)) (*UpdateResult, *domain.Project, error) {
+	resolvedRoot, err := ResolveRoot(root)
+	if err != nil {
+		return nil, nil, err
+	}
+	projectDir := domain.LocalProjectDir(resolvedRoot)
+	if !domain.Exists(projectDir) {
+		return nil, nil, fmt.Errorf("no zolam project in %s; run 'zolam ingest <dir>' there first", resolvedRoot)
+	}
+	project, err := domain.Load(projectDir)
+	if err != nil {
+		return nil, nil, fmt.Errorf("loading project in %s: %w", projectDir, err)
+	}
+	return RunV3Sync(V3SyncOptions{
+		Root:  root,
+		Dirs:  project.SourceDirs,
+		Reset: reset,
+	}, outputFn)
+}
+
 func loadOrCreateProject(projectDir, root string, opts V3SyncOptions) (*domain.Project, error) {
 	absDirs, err := absPaths(opts.Dirs)
 	if err != nil {
