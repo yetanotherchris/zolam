@@ -19,6 +19,8 @@ time — it's both the first-time indexer and the incremental updater.
 
 **Prerequisite:** [uv](https://docs.astral.sh/uv/getting-started/installation/) (`brew install uv`, `winget install astral-sh.uv`, or `scoop install uv`). uv provisions Python and every pipeline dependency itself on first run.
 
+**Optional:** [Tesseract](https://github.com/tesseract-ocr/tesseract) (`brew install tesseract`, `apt install tesseract-ocr`, or `scoop install tesseract`) for OCR on scanned PDFs with no text layer. Without it, such pages are indexed as empty text.
+
 ```bash
 # Install uv 
 curl -LsSf https://astral.sh/uv/install.sh | sh

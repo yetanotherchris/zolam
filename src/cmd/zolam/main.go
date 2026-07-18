@@ -118,7 +118,7 @@ func truncateForDisplay(text string) string {
 	return text
 }
 
-func initServices() (*docker.DockerClient, *zolam.Ingester, error) {
+func initServices() (*docker.DockerClient, error) {
 	if _, exists := os.LookupEnv("ZOLAM_CHROMADB_DATA_DIR"); !exists {
 		homeDir, _ := os.UserHomeDir()
 		os.Setenv("ZOLAM_CHROMADB_DATA_DIR", homeDir+"/.zolam/chromadb")
@@ -126,11 +126,10 @@ func initServices() (*docker.DockerClient, *zolam.Ingester, error) {
 
 	dc, err := docker.NewDockerClient()
 	if err != nil {
-		return nil, nil, fmt.Errorf("initializing docker: %w", err)
+		return nil, fmt.Errorf("initializing docker: %w", err)
 	}
 
-	ing := zolam.NewIngester(dc)
-	return dc, ing, nil
+	return dc, nil
 }
 
 // looksLikeExtension returns true for tokens like ".md", ".csv,", ".html" —
@@ -337,7 +336,7 @@ func newChromaDBStartCmd() *cobra.Command {
 		Short: "Start the ChromaDB container",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			dc, _, err := initServices()
+			dc, err := initServices()
 			if err != nil {
 				return err
 			}
@@ -360,7 +359,7 @@ func newChromaDBStopCmd() *cobra.Command {
 		Short: "Stop the ChromaDB container",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			dc, _, err := initServices()
+			dc, err := initServices()
 			if err != nil {
 				return err
 			}
@@ -380,7 +379,7 @@ func newChromaDBStatusCmd() *cobra.Command {
 		Short: "Check whether the ChromaDB container is running",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			dc, _, err := initServices()
+			dc, err := initServices()
 			if err != nil {
 				return err
 			}
@@ -409,7 +408,7 @@ func newChromaDBCollectionsCmd() *cobra.Command {
 		Short: "List all ChromaDB collections",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			dc, _, err := initServices()
+			dc, err := initServices()
 			if err != nil {
 				return err
 			}
@@ -436,7 +435,7 @@ func newChromaDBCollectionsCmd() *cobra.Command {
 		Short: "Remove a ChromaDB collection by name",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			dc, _, err := initServices()
+			dc, err := initServices()
 			if err != nil {
 				return err
 			}
@@ -457,7 +456,7 @@ func newChromaDBCollectionsCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			collection, fileName := args[0], args[1]
-			dc, _, err := initServices()
+			dc, err := initServices()
 			if err != nil {
 				return err
 			}

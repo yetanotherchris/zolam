@@ -1,20 +1,17 @@
 package docker
 
 import (
-	"embed"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 )
 
-//go:embed compose.yml
-var composeFS embed.FS
+const chromaContainerName = "zolam-chromadb"
+const chromaImage = "chromadb/chroma:latest"
 
 type DockerClient struct {
-	composePath string
+	dataDir string
 }
 
 // CheckDockerAvailable verifies that Docker is installed and the daemon is running.
@@ -41,105 +38,35 @@ func NewDockerClient() (*DockerClient, error) {
 		return nil, err
 	}
 
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get home directory: %w", err)
-	}
-
-	zolamDir := filepath.Join(homeDir, ".zolam")
-	if err := os.MkdirAll(zolamDir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create ~/.zolam directory: %w", err)
-	}
-
-	composePath := filepath.Join(zolamDir, "compose.yml")
-	data, err := composeFS.ReadFile("compose.yml")
-	if err != nil {
-		return nil, fmt.Errorf("failed to read embedded compose.yml: %w", err)
-	}
-
-	chromadbDir := filepath.ToSlash(filepath.Join(zolamDir, "chromadb"))
-	data = []byte(strings.ReplaceAll(string(data), ":-./chromadb}", ":-"+chromadbDir+"}"))
-
-	existing, readErr := os.ReadFile(composePath)
-	if readErr != nil || string(existing) != string(data) {
-		if readErr == nil {
-			backupPath := composePath + ".bak"
-			os.Rename(composePath, backupPath)
+	dataDir := os.Getenv("ZOLAM_CHROMADB_DATA_DIR")
+	if dataDir == "" {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get home directory: %w", err)
 		}
-		if err := os.WriteFile(composePath, data, 0644); err != nil {
-			return nil, fmt.Errorf("failed to write compose.yml: %w", err)
-		}
+		dataDir = filepath.Join(homeDir, ".zolam", "chromadb")
+	}
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create chromadb data directory: %w", err)
 	}
 
-	return &DockerClient{
-		composePath: composePath,
-	}, nil
-}
-
-func (c *DockerClient) composeCmd(args ...string) *exec.Cmd {
-	cmdArgs := []string{"compose", "-f", c.composePath}
-	cmdArgs = append(cmdArgs, args...)
-	return exec.Command("docker", cmdArgs...)
-}
-
-func (c *DockerClient) ComposeUp(services ...string) error {
-	args := []string{"up", "-d", "--pull", "always"}
-	args = append(args, services...)
-	cmd := c.composeCmd(args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
-}
-
-func (c *DockerClient) ComposeDown() error {
-	cmd := c.composeCmd("down")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
-}
-
-func (c *DockerClient) ComposePull(service string) error {
-	cmd := c.composeCmd("pull", service)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
-}
-
-func (c *DockerClient) ComposeRun(service string, runArgs []string, containerArgs []string) (*exec.Cmd, error) {
-	cmdArgs := []string{"run", "--rm"}
-	cmdArgs = append(cmdArgs, runArgs...)
-	cmdArgs = append(cmdArgs, service)
-	cmdArgs = append(cmdArgs, containerArgs...)
-	cmd := c.composeCmd(cmdArgs...)
-	return cmd, nil
-}
-
-func (c *DockerClient) RunContainer(image string, args ...string) (*exec.Cmd, error) {
-	cmdArgs := []string{"run", "--rm"}
-	cmdArgs = append(cmdArgs, args...)
-	cmdArgs = append(cmdArgs, image)
-	cmd := exec.Command("docker", cmdArgs...)
-	return cmd, nil
+	return &DockerClient{dataDir: dataDir}, nil
 }
 
 func (c *DockerClient) IsContainerRunning(name string) (bool, error) {
-	cmd := exec.Command("docker", "ps", "--filter", fmt.Sprintf("name=%s", name), "--format", "{{.Names}}")
+	cmd := exec.Command("docker", "ps", "--filter", fmt.Sprintf("name=^/%s$", name), "--format", "{{.Names}}")
 	output, err := cmd.Output()
 	if err != nil {
 		return false, fmt.Errorf("failed to check container status: %w", err)
 	}
-
-	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-	for _, line := range lines {
-		if strings.Contains(strings.TrimSpace(line), name) {
-			return true, nil
-		}
-	}
-	return false, nil
+	return len(output) > 0, nil
 }
 
-func (c *DockerClient) StreamOutput(cmd *exec.Cmd, w io.Writer) error {
-	cmd.Stdout = w
-	cmd.Stderr = w
-	return cmd.Run()
+func (c *DockerClient) containerExists(name string) (bool, error) {
+	cmd := exec.Command("docker", "ps", "-a", "--filter", fmt.Sprintf("name=^/%s$", name), "--format", "{{.Names}}")
+	output, err := cmd.Output()
+	if err != nil {
+		return false, fmt.Errorf("failed to check container status: %w", err)
+	}
+	return len(output) > 0, nil
 }

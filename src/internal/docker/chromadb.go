@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"os/exec"
 	"time"
 )
 
@@ -23,16 +25,52 @@ type FileHashRecord struct {
 	Hash   string
 }
 
+// StartChromaDB runs the ChromaDB container directly with `docker run`
+// (previously via Docker Compose; the compose file's only other service,
+// a batch ingest container, was dead code never invoked by the CLI).
+// Restarts an existing stopped container rather than recreating it, so
+// StartChromaDB is safe to call repeatedly.
 func (c *DockerClient) StartChromaDB() error {
-	return c.ComposeUp("chromadb")
+	exists, err := c.containerExists(chromaContainerName)
+	if err != nil {
+		return err
+	}
+	if exists {
+		cmd := exec.Command("docker", "start", chromaContainerName)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		return cmd.Run()
+	}
+
+	pull := exec.Command("docker", "pull", chromaImage)
+	pull.Stdout = os.Stdout
+	pull.Stderr = os.Stderr
+	if err := pull.Run(); err != nil {
+		return fmt.Errorf("pulling %s: %w", chromaImage, err)
+	}
+
+	cmd := exec.Command("docker", "run", "-d",
+		"--name", chromaContainerName,
+		"-p", "8000:8000",
+		"-v", c.dataDir+":/data",
+		"-e", "IS_PERSISTENT=TRUE",
+		"-e", "ANONYMIZED_TELEMETRY=FALSE",
+		chromaImage,
+	)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
 }
 
 func (c *DockerClient) StopChromaDB() error {
-	return c.ComposeDown()
+	cmd := exec.Command("docker", "rm", "-f", chromaContainerName)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
 }
 
 func (c *DockerClient) ChromaDBStatus() (bool, error) {
-	return c.IsContainerRunning("chromadb")
+	return c.IsContainerRunning(chromaContainerName)
 }
 
 func (c *DockerClient) WaitForChromaDB(timeout time.Duration) error {
