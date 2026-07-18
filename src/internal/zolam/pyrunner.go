@@ -154,7 +154,18 @@ type QueryResponse struct {
 // runPythonScript invokes `uv run <script> <args...>`, streaming stderr
 // lines live to outputFn while capturing stdout in full. On failure the
 // returned error includes the last few lines of stderr for context.
-func runPythonScript(args []string, outputFn func(string)) ([]byte, error) {
+//
+// It holds an exclusive lock on projectDir for the duration of the run:
+// DuckDB only allows one process to have index.duckdb open at a time, so
+// without this a second concurrent 'zolam ingest'/'query' against the same
+// project would surface as a raw DuckDB IO error instead of a clear one.
+func runPythonScript(projectDir string, args []string, outputFn func(string)) ([]byte, error) {
+	release, err := acquireLock(projectDir)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+
 	uvBin, err := findUV()
 	if err != nil {
 		return nil, err
@@ -278,7 +289,7 @@ func RunIngest(project *domain.Project, projectDir string, files, removed []stri
 		args = append(args, removed...)
 	}
 
-	out, err := runPythonScript(args, outputFn)
+	out, err := runPythonScript(projectDir, args, outputFn)
 	if err != nil {
 		return nil, err
 	}
@@ -305,7 +316,7 @@ func RunQuery(project *domain.Project, projectDir, queryText string, topK int, k
 		args = append(args, "--keyword")
 	}
 
-	out, err := runPythonScript(args, outputFn)
+	out, err := runPythonScript(projectDir, args, outputFn)
 	if err != nil {
 		return nil, err
 	}
