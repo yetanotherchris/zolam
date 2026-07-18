@@ -9,7 +9,6 @@ Zolam is a Go CLI that will walk subdirectories, extracting and chunking text an
 ```bash
 # Install uv (required)
 brew install uv             # macOS/Linux
-winget install astral-sh.uv # Windows
 scoop install uv            # Windows
 curl -LsSf https://astral.sh/uv/install.sh | sh # macOS/Linux
 

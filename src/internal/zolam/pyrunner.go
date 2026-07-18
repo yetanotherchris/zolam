@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -25,14 +26,60 @@ var scriptFS embed.FS
 
 const scriptName = "ingest.py"
 
-// EnsureUV verifies that uv is on PATH, returning a one-line remedy if not.
+// EnsureUV verifies that uv can be found (via PATH or a well-known install
+// location), returning a one-line remedy if not.
 func EnsureUV() error {
-	if _, err := exec.LookPath("uv"); err != nil {
-		return fmt.Errorf("uv is required but not found on PATH: install it with " +
-			"'brew install uv' (macOS/Linux), 'winget install astral-sh.uv' or " +
-			"'scoop install uv' (Windows), or see https://docs.astral.sh/uv/getting-started/installation/")
+	_, err := findUV()
+	return err
+}
+
+// findUV locates the uv executable. It checks PATH first, then falls back
+// to uv's well-known install directories: some launchers (editors, agent
+// runners like OpenCode/Claude Code) spawn subprocesses with a PATH that
+// doesn't include the same directories a login shell would, even though
+// `uv` itself is installed and works fine interactively.
+func findUV() (string, error) {
+	if path, err := exec.LookPath("uv"); err == nil {
+		return path, nil
 	}
-	return nil
+
+	name := "uv"
+	if runtime.GOOS == "windows" {
+		name = "uv.exe"
+	}
+	for _, dir := range uvFallbackDirs() {
+		candidate := filepath.Join(dir, name)
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return candidate, nil
+		}
+	}
+
+	return "", fmt.Errorf("uv is required but not found on PATH: install it with " +
+		"'brew install uv' (macOS/Linux), 'winget install astral-sh.uv' or " +
+		"'scoop install uv' (Windows), or see https://docs.astral.sh/uv/getting-started/installation/")
+}
+
+// uvFallbackDirs lists directories uv's official installers commonly place
+// the binary in, beyond whatever a subprocess's PATH happens to contain.
+func uvFallbackDirs() []string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+	if runtime.GOOS == "windows" {
+		return []string{
+			filepath.Join(home, ".local", "bin"),
+			filepath.Join(home, "AppData", "Local", "Microsoft", "WinGet", "Links"),
+			filepath.Join(home, "scoop", "shims"),
+		}
+	}
+	return []string{
+		filepath.Join(home, ".local", "bin"), // astral.sh install script default
+		filepath.Join(home, ".cargo", "bin"), // older uv installs
+		"/opt/homebrew/bin",                  // Homebrew on Apple Silicon
+		"/usr/local/bin",                     // Homebrew on Intel macOS / Linux
+		"/home/linuxbrew/.linuxbrew/bin",     // Homebrew on Linux
+	}
 }
 
 // ScriptsDir returns <data-dir>/scripts.
@@ -108,7 +155,8 @@ type QueryResponse struct {
 // lines live to outputFn while capturing stdout in full. On failure the
 // returned error includes the last few lines of stderr for context.
 func runPythonScript(args []string, outputFn func(string)) ([]byte, error) {
-	if err := EnsureUV(); err != nil {
+	uvBin, err := findUV()
+	if err != nil {
 		return nil, err
 	}
 	scriptPath, err := EnsureScripts()
@@ -117,7 +165,7 @@ func runPythonScript(args []string, outputFn func(string)) ([]byte, error) {
 	}
 
 	cmdArgs := append([]string{"run", scriptPath}, args...)
-	cmd := exec.Command("uv", cmdArgs...)
+	cmd := exec.Command(uvBin, cmdArgs...)
 	// Windows without Developer Mode/admin can't create symlinks, so the
 	// huggingface_hub cache falls back to copies; that's expected here and
 	// not worth surfacing as a warning on every ingest.

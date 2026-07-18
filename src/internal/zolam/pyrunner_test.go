@@ -3,6 +3,7 @@ package zolam
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -79,6 +80,42 @@ func TestEnsureScripts_RewritesOnStaleVersion(t *testing.T) {
 	}
 	if string(data) == "# stale" {
 		t.Errorf("expected stale script to be rewritten")
+	}
+}
+
+func TestFindUV_FallsBackToWellKnownDir(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fallback dirs differ on windows; PATH-only case covered elsewhere")
+	}
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", t.TempDir()) // deliberately exclude any real uv from PATH
+
+	localBin := filepath.Join(home, ".local", "bin")
+	if err := os.MkdirAll(localBin, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	fakeUV := filepath.Join(localBin, "uv")
+	if err := os.WriteFile(fakeUV, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatalf("writing fake uv: %v", err)
+	}
+
+	got, err := findUV()
+	if err != nil {
+		t.Fatalf("findUV() returned error: %v", err)
+	}
+	if got != fakeUV {
+		t.Errorf("findUV() = %q, want %q", got, fakeUV)
+	}
+}
+
+func TestFindUV_ErrorsWhenNotFoundAnywhere(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("PATH", t.TempDir())
+
+	if _, err := findUV(); err == nil {
+		t.Fatal("expected error when uv is not on PATH or in any fallback dir")
 	}
 }
 
