@@ -152,6 +152,19 @@ jobs:
           export CGO_CFLAGS="-I$(cygpath -m /mingw64/include)"
           export CGO_CXXFLAGS="-I$(cygpath -m /mingw64/include)"
           export CGO_LDFLAGS="-L$(cygpath -m /mingw64/lib)"
+
+          # -L alone isn't enough if MSYS2's package names the import
+          # library differently than gosseract's hardcoded -lleptonica
+          # expects (Debian/Homebrew ship "leptonica", MSYS2's own
+          # pkgconfig module is called "lept" — the .a name may follow
+          # suit). Log what's actually there, and alias it either way
+          # so `-lleptonica` resolves regardless of which convention
+          # this MSYS2 package release used.
+          echo "---- /mingw64/lib (lept/tesseract) ----"
+          ls -la /mingw64/lib | grep -iE 'lept|tesseract' || true
+          echo "----------------------------------------"
+          ln -sf /mingw64/lib/liblept.dll.a /mingw64/lib/libleptonica.dll.a 2>/dev/null || true
+          ln -sf /mingw64/lib/liblept.a /mingw64/lib/libleptonica.a 2>/dev/null || true
           go build -ldflags="-X main.version=${{ steps.version.outputs.VERSION }} -s -w" -o zolam.exe ./cmd/zolam/
 
       - name: Build (Linux/macOS)
