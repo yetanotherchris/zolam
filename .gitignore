@@ -212,3 +212,6 @@ src/zolam
 src/*.exe
 .claude/settings.local.json
 src/.claude/settings.local.json
+
+# Native library fetched by tools/fetchnative before a CGO build
+src/native/

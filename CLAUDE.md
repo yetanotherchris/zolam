@@ -2,54 +2,43 @@
 
 ## Project Overview
 
-Zolam is a semantic search tool that ingests personal files (markdown, PDF, DOCX, code) into ChromaDB for semantic search via Claude. It provides both a TUI (interactive) and CLI (scriptable) interface.
+Zolam is a semantic search tool that ingests personal files (markdown, PDF, DOCX, code) into a per-directory DuckDB (or JSONL) index for semantic search via Claude. It's a single Go binary — no Docker, Python, or Node runtime required to ingest or query. (A legacy ChromaDB/Docker/MCP workflow still exists under `zolam chromadb` for pre-v3 data; see README's "Deprecated" section.)
 
 ## Tech Stack
 
-- **Go TUI/CLI**: Located in `src/`, built with Cobra (CLI), Bubbletea + Lipgloss (TUI)
-- **Python ingester**: `ingest.py` runs inside Docker to process files into ChromaDB
-- **Docker**: ChromaDB runs as a Docker container via Docker Compose
+- **Go CLI**: Located in `src/`, built with Cobra. CGO is enabled — several dependencies wrap native libraries (see below).
+- **DuckDB**: `github.com/marcboeker/go-duckdb` — the per-project vector index (`.zolam/index.duckdb`).
+- **PDF extraction/rendering**: `github.com/gen2brain/go-fitz` (MuPDF, statically bundled — no extra install).
+- **OCR**: `github.com/otiai10/gosseract` (Tesseract) — needs Tesseract installed on the host; falls back gracefully (page left blank) if it isn't.
+- **Embeddings**: `github.com/yalue/onnxruntime_go` + `github.com/daulet/tokenizers` (the real HuggingFace tokenizers library, for byte-exact tokenization) run `BAAI/bge-small-en-v1.5` (384 dims). The onnxruntime shared library, tokenizer, and model weights download once into `~/.zolam` on first use.
+- **DOCX extraction**: `github.com/fumiama/go-docx` (pure Go, no native dependency).
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────┐
-│  Go TUI/CLI (src/)                              │
-│  - Manages Docker containers via Docker Compose │
-│  - Config, ingest orchestration, stats          │
-└──────────────┬──────────────────────────────────┘
-               │ starts
-┌──────────────▼──────────────────────────────────┐
-│  Ingest container (ingest.py)                   │
-│  1. Extracts text from files (PDF, DOCX, etc.)  │
-│  2. Chunks text into ~2000 char segments        │
-│  3. Embeds chunks CLIENT-SIDE using             │
-│     all-MiniLM-L6-v2 (onnxruntime) -> 384 dims  │
-│  4. Sends vectors + metadata to ChromaDB server │
-└──────────────┬──────────────────────────────────┘
-               │ HTTP
-┌──────────────▼──────────────────────────────────┐
-│  ChromaDB server container                      │
-│  - Stores and queries 384-dim vectors           │
-│  - Does NOT generate embeddings                 │
-└──────────────┬──────────────────────────────────┘
-               │ queried by
-┌──────────────▼──────────────────────────────────┐
-│  chroma-mcp server (Claude tool)                │
-│  - Must use same 384-dim embedding model        │
-│    (all-MiniLM-L6-v2) for compatible queries    │
-└─────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────┐
+│  Go CLI (src/cmd/zolam, src/internal/zolam)       │
+│  1. Hashes files, diffs against file-hashes.json  │
+│  2. Bounded worker pool (goroutines) per file:    │
+│     extract (go-fitz/go-docx/plain) → OCR         │
+│     fallback if needed → chunk → embed            │
+│  3. Single writer commits chunks+vectors to the   │
+│     project's index (DuckDBRepo or JsonlRepo)     │
+└───────────────────────────────────────────────────┘
 ```
 
-Embeddings always run client-side, not on the ChromaDB server. The embedding model (all-MiniLM-L6-v2, 384 dimensions) is baked into the Docker image. The chroma-mcp plugin used by Claude must use the same model and vector size (384) or queries will fail due to dimension mismatch.
+Only one process may ever have a project's `index.duckdb` open at a time (a DuckDB constraint, not a design choice) — `lock.go` enforces this with a project-local lock file so a second concurrent `zolam ingest`/`query` fails with a clear message instead of a raw DuckDB IO error.
+
+Building from source needs a C compiler (CGO) and a one-time fetch of the `daulet/tokenizers` static library — see README's "Building from Source".
 
 ## Build & Test
 
 ```bash
 cd src
-go build ./cmd/zolam/        # build
-go test ./...                    # run all tests
-go vet ./...                     # lint
+go run ./tools/fetchnative   # one-time: fetches native/tokenizers/libtokenizers.a
+go build ./cmd/zolam/        # build (CGO_ENABLED=1)
+go test ./...                # run all tests
+go vet ./...                 # lint
 ```
 
 ## Project Structure
@@ -58,10 +47,12 @@ go vet ./...                     # lint
 src/
 ├── cmd/zolam/main.go        # Entry point, CLI subcommands
 ├── internal/
-│   ├── domain/                 # Config, manifest types
-│   ├── docker/                 # Docker/compose client, ChromaDB
-│   ├── zolam/                  # Ingest pipeline, file hashing, stats
-│   └── tui/                    # Bubbletea TUI (app, menu, ingest, progress, styles)
+│   ├── domain/                 # Config, project.json types
+│   ├── docker/                 # Docker/compose client (legacy ChromaDB path only)
+│   └── zolam/                  # Ingest/query pipeline: extraction, chunking, embedding,
+│                                # DuckDB/JSONL repos, worker pool, file hashing, lock file
+├── native/tokenizers/        # Fetched by tools/fetchnative, gitignored
+├── tools/fetchnative/        # Fetches the daulet/tokenizers static lib pre-build
 ├── go.mod
 └── go.sum
 ```

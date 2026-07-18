@@ -2,16 +2,11 @@
 
 Ingest your personal files (PDF, Markdown, Docx, Txt, code) into a local flat-file/DuckDB/ChromaDb index for semantic search in Claude Code / OpenCode. 
 
-Zolam is a Go CLI that will walk subdirectories, extracting and chunking text and creating embeds (via Python). It hashes files for incremental updates, and generates a human-readable `index.md` summary.  It stores what it needs in `.zolam` directory.
+Zolam is a single Go binary that walks subdirectories, extracting and chunking text and creating embeddings natively (no separate runtime to install). It hashes files for incremental updates, and generates a human-readable `index.md` summary.  It stores what it needs in `.zolam` directory.
 
 ## Quick Start
 
 ```bash
-# Install uv (required)
-brew install uv             # macOS/Linux
-scoop install uv            # Windows
-curl -LsSf https://astral.sh/uv/install.sh | sh # macOS/Linux
-
 # MacOS/Linux
 brew install yetanotherchris/tap/zolam
 
@@ -112,27 +107,36 @@ docker compose --profile ingest run --rm \
   ingest --directory /sources/notes
 ```
 
-## Why Python?
+## Architecture notes
 
-The ingest pipeline (text extraction, chunking, embedding) runs as an
-embedded Python script rather than pure Go, mainly because of the embedding
-step: generating vectors with `BAAI/bge-small-en-v1.5` needs an ONNX
-inference runtime plus a matching tokenizer, and Python's
-[`fastembed`](https://github.com/qdrant/fastembed) package bundles both,
-mature and battle-tested.
+The ingest/query pipeline (extraction, chunking, embedding, and the DuckDB
+index itself) is pure Go — there's no separate Python or Node runtime to
+install. This needs CGO enabled at build time, since three of the pipeline's
+dependencies wrap native libraries: [`marcboeker/go-duckdb`](https://github.com/marcboeker/go-duckdb)
+(DuckDB), [`gen2brain/go-fitz`](https://github.com/gen2brain/go-fitz) (MuPDF,
+for PDF extraction/rendering — statically bundled, no extra install needed),
+and [`otiai10/gosseract`](https://github.com/otiai10/gosseract) (Tesseract,
+for OCR — needs Tesseract installed on the host, same as the "Optional:
+Tesseract" step above). Embeddings run via [`yalue/onnxruntime_go`](https://github.com/yalue/onnxruntime_go)
+and [`daulet/tokenizers`](https://github.com/daulet/tokenizers) (the real
+HuggingFace tokenizers library, for byte-exact compatibility with the
+`BAAI/bge-small-en-v1.5` model this project uses); the onnxruntime shared
+library and model weights are downloaded once into `~/.zolam` on first use,
+same as before.
 
-A Go-only pipeline is possible but not yet a clean swap:
-- [`onnxruntime.ai`](https://onnxruntime.ai/docs/) (what `fastembed` runs on under the hood) has no official Go API — you'd rely on a community CGo binding like [`yalue/onnxruntime_go`](https://github.com/yalue/onnxruntime_go), trading a static Go binary for CGo plus a bundled native `onnxruntime` shared library per platform.
-- Go still lacks a mature, bit-exact tokenizer matching `fastembed`'s output for `BAAI/bge-small-en-v1.5`, so tokenization would need to be built and verified against the Python output to avoid silently different embeddings.
-- PDF/DOCX extraction, however, has solid pure-Go options — [`gopdf`](https://github.com/razvandimescu/gopdf) and [`go-docx`](https://github.com/fumiama/go-docx) — so that half of the pipeline could move to Go today.
-
-`uv` keeps the Python dependency painless (no manual install, auto-provisioned
-on first run), so it stays for now.
+Released binaries are unaffected by any of this — CGO only matters at
+*build* time (it needs a real C compiler present), not at runtime, so
+prebuilt `zolam` downloads need nothing extra installed beyond Tesseract for
+OCR.
 
 ## Building from Source
 
+Building from source needs a C compiler (CGO is enabled) and, once, a
+prebuilt `libtokenizers.a` fetched into `native/tokenizers/`:
+
 ```bash
 cd src
+go run ./tools/fetchnative   # fetches native/tokenizers/libtokenizers.a (one-time)
 go build -o zolam ./cmd/zolam/
 go test ./...
 ```
