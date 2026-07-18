@@ -23,9 +23,12 @@ the final line on stdout is always a single JSON object.
 """
 
 import argparse
+import functools
 import hashlib
 import json
+import os
 import re
+import shutil
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -133,24 +136,82 @@ def read_plain(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
+@functools.lru_cache(maxsize=1)
+def _find_tessdata_dir() -> str | None:
+    """Locate a Tesseract `tessdata` folder (the language files PyMuPDF's
+    OCR needs) since Tesseract's own installers don't set TESSDATA_PREFIX.
+    Only the language data is required, not a full Tesseract install.
+    Checked in order: TESSDATA_PREFIX, then layouts relative to a
+    `tesseract` binary on PATH (following scoop's shim indirection on
+    Windows), then well-known per-OS default paths."""
+    env = os.environ.get("TESSDATA_PREFIX")
+    if env and Path(env).is_dir():
+        return env
+
+    candidates: list[Path] = []
+    tess_bin = shutil.which("tesseract")
+    if tess_bin:
+        bin_path = Path(tess_bin)
+        # scoop shims are stub executables; the real install path lives in
+        # a sibling ".shim" file rather than being a filesystem symlink.
+        shim_file = bin_path.with_suffix(".shim")
+        if shim_file.exists():
+            for line in shim_file.read_text(encoding="utf-8", errors="ignore").splitlines():
+                if line.strip().lower().startswith("path"):
+                    real = line.split("=", 1)[-1].strip().strip('"')
+                    if real:
+                        bin_path = Path(real)
+                    break
+        bin_dir = bin_path.resolve().parent
+        candidates += [
+            bin_dir / "tessdata",
+            bin_dir.parent / "tessdata",
+            bin_dir.parent / "share" / "tessdata",
+            bin_dir.parent / "share" / "tesseract-ocr" / "tessdata",
+        ]
+        candidates += sorted(bin_dir.parent.glob("share/tesseract-ocr/*/tessdata"))
+
+    scoop_dir = os.environ.get("SCOOP") or str(Path.home() / "scoop")
+    candidates += [
+        Path(scoop_dir) / "apps" / "tesseract" / "current" / "tessdata",
+        Path(os.environ.get("ProgramFiles", "C:/Program Files")) / "Tesseract-OCR" / "tessdata",
+        Path("/usr/share/tesseract-ocr/5/tessdata"),
+        Path("/usr/share/tesseract-ocr/4.00/tessdata"),
+        Path("/usr/share/tessdata"),
+        Path("/opt/homebrew/share/tessdata"),
+        Path("/usr/local/share/tessdata"),
+    ]
+
+    for candidate in candidates:
+        if candidate.is_dir() and any(candidate.glob("*.traineddata")):
+            return str(candidate)
+    return None
+
+
 def extract_pdf_pages(path: Path) -> list[str]:
     """Extract each page's text layer, falling back to OCR (via PyMuPDF's
-    Tesseract integration) for pages with no embedded text, e.g. scanned
-    PDFs. OCR needs Tesseract installed on the host; if it's unavailable
-    the page is left as its (empty) text-layer result rather than failing
-    the whole file."""
+    bundled Tesseract engine) for pages with no embedded text, e.g. scanned
+    PDFs. OCR needs a `tessdata` language-file folder locatable via
+    TESSDATA_PREFIX or a Tesseract install (see _find_tessdata_dir); if
+    unavailable the page is left as its (empty) text-layer result rather
+    than failing the whole file."""
     import fitz  # pymupdf
 
     doc = fitz.open(str(path))
     try:
         pages = []
+        tessdata = _find_tessdata_dir()
         for page in doc:
             text = page.get_text()
             if not text.strip():
                 try:
-                    text = page.get_text(textpage=page.get_textpage_ocr(language="eng"))
+                    ocr_kwargs = {"language": "eng"}
+                    if tessdata:
+                        ocr_kwargs["tessdata"] = tessdata
+                    text = page.get_text(textpage=page.get_textpage_ocr(**ocr_kwargs))
                 except Exception as ocr_err:
-                    print(f"  OCR failed {path} page {page.number + 1}: {ocr_err}", file=sys.stderr)
+                    hint = "" if tessdata else " (install Tesseract, or set TESSDATA_PREFIX to a tessdata folder — see README)"
+                    print(f"  OCR failed {path} page {page.number + 1}: {ocr_err}{hint}", file=sys.stderr)
             pages.append(text)
         return pages
     finally:
