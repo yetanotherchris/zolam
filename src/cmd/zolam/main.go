@@ -79,7 +79,7 @@ func main() {
 		Long: "A CLI tool that indexes files in the current directory into a flat-file\n" +
 			"index (duckdb/jsonl) for semantic search via Claude Code/OpenCode, with no\n" +
 			"background service required.\n\n" +
-			"  zolam ingest [dirs...]   index files (creates the project, or refreshes it)\n" +
+			"  zolam ingest <dirs...>   index files (creates the project, or refreshes it)\n" +
 			"  zolam query <text>       search the index\n\n" +
 			"The legacy Docker/ChromaDB workflow lives under 'zolam chromadb'.",
 		Version: version,
@@ -184,15 +184,15 @@ func newIngestCmd() *cobra.Command {
 	var reset bool
 
 	cmd := &cobra.Command{
-		Use:   "ingest [directories...]",
+		Use:   "ingest <directories...>",
 		Short: "Index files into the project (creates it, or refreshes it)",
 		Long: "Index files into the current directory's flat-file project (duckdb by\n" +
-			"default, or jsonl). The first time you ingest, name one or more\n" +
-			"subdirectories to scope what gets indexed (pass '.' to index the\n" +
-			"current directory itself, including dotfiles/dirs); re-running with\n" +
-			"no arguments re-syncs using the directories the project already has.\n" +
-			"Safe to re-run at any time: only added, changed, or removed files are\n" +
-			"reprocessed.",
+			"default, or jsonl). Always name one or more subdirectories to scope\n" +
+			"what gets indexed (pass '.' to index the current directory itself,\n" +
+			"including dotfiles/dirs) — this applies on every run, not just the\n" +
+			"first. Safe to re-run at any time: incremental behaviour (only\n" +
+			"added/changed/removed files are reprocessed) comes from diffing\n" +
+			"against the stored file hashes, not from omitting directories.",
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dirs, exts := splitArgsFromExtensions(args, extensions)

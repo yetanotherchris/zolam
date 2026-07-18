@@ -6,11 +6,15 @@ description: Search the user's personal document indexes (PDFs, notes, contracts
 # Zolam document search
 
 A zolam project is just a directory: run `zolam ingest <dirs> [--extensions
-...]` inside it once, naming one or more subdirectories to scope/filter
-what's indexed (`zolam ingest .` indexes the directory itself, including
-dotfiles/dirs like `.git`/`.claude`/`.agents` — usually not what you want),
-and it gets a hidden `.zolam/` folder (`.zolam/project.json`,
-`.zolam/index.md`, `.zolam/index.duckdb` or `.zolam/index.jsonl`,
+...]` inside it, naming one or more subdirectories to scope/filter what's
+indexed (`zolam ingest .` indexes the directory itself, including
+dotfiles/dirs like `.git`/`.claude`/`.agents` — usually not what you want).
+A directory is required on every run, not just the first — re-running to
+pick up added/changed/removed files still means naming the same
+directory again; incremental behaviour comes from the stored file hashes,
+not from omitting it. Ingesting creates a hidden `.zolam/` folder
+(`.zolam/project.json`, `.zolam/index.md`,
+`.zolam/index.duckdb` or `.zolam/index.jsonl`,
 `.zolam/extracted/` for PDF/DOCX sidecars). There is no separate global
 project registry — a directory containing `.zolam/project.json` is an
 indexed project.
@@ -24,4 +28,4 @@ Workflow for answering a question from the user's documents:
 5. Always open the full extracted file (`.zolam/extracted/<file>.md`) or the original source file to read surrounding context before answering — do not answer from an isolated chunk if the question depends on context.
 6. Cite the source file (and page for PDFs) in your answer.
 
-If `zolam query` reports a missing index or model mismatch, tell the user to run `zolam ingest --reset` in that directory.
+If `zolam query` reports a missing index or model mismatch, tell the user to run `zolam ingest <subdir> --reset` in that directory.
