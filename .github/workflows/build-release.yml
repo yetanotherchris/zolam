@@ -60,7 +60,15 @@ jobs:
 
       - name: Install Tesseract/Leptonica dev libraries (macOS)
         if: runner.os == 'macOS'
-        run: brew install tesseract pkg-config
+        run: |
+          brew install tesseract pkg-config
+          # gosseract's cgo bridge has no #cgo CFLAGS/LDFLAGS of its own and
+          # relies on the compiler's default search paths, which don't
+          # include Homebrew's prefix (especially /opt/homebrew on Apple
+          # Silicon) — point CGO at it explicitly.
+          echo "CGO_CFLAGS=-I$(brew --prefix)/include" >> "$GITHUB_ENV"
+          echo "CGO_CXXFLAGS=-I$(brew --prefix)/include" >> "$GITHUB_ENV"
+          echo "CGO_LDFLAGS=-L$(brew --prefix)/lib" >> "$GITHUB_ENV"
 
       - name: Set up MSYS2 (Windows CGO toolchain + Tesseract/Leptonica)
         if: runner.os == 'Windows'
