@@ -270,9 +270,7 @@ func newQueryCmd() *cobra.Command {
 				return err
 			}
 
-			resp, err := zolam.RunQuery(proj, projectDir, args[0], topK, keyword, func(line string) {
-				fmt.Fprintln(os.Stderr, line)
-			})
+			hits, err := zolam.RunQuery(proj, projectDir, args[0], topK, keyword)
 			if err != nil {
 				return err
 			}
@@ -280,14 +278,14 @@ func newQueryCmd() *cobra.Command {
 			if jsonOut {
 				enc := json.NewEncoder(os.Stdout)
 				enc.SetIndent("", "  ")
-				return enc.Encode(resp)
+				return enc.Encode(hits)
 			}
 
-			if len(resp.Results) == 0 {
+			if len(hits) == 0 {
 				fmt.Println("No results.")
 				return nil
 			}
-			for i, hit := range resp.Results {
+			for i, hit := range hits {
 				loc := fmt.Sprintf("chunk %d", hit.Chunk)
 				if hit.Page != nil {
 					loc = fmt.Sprintf("page %d, chunk %d", *hit.Page, hit.Chunk)

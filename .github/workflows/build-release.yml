@@ -14,15 +14,21 @@ jobs:
     strategy:
       matrix:
         include:
+          # Every leg builds natively on a matching-architecture runner —
+          # CGO is enabled (DuckDB, MuPDF, Tesseract, ONNX Runtime bindings
+          # all need a real C compiler), and cross-compiling CGO against
+          # system libraries like Tesseract is fragile, so cross-arch
+          # legs from earlier (linux-arm64 from an amd64 runner, for
+          # instance) were switched to native arm64/amd64 runners instead.
           - os: ubuntu-latest
             goos: linux
             goarch: amd64
             suffix: linux-amd64
-          - os: ubuntu-latest
+          - os: ubuntu-24.04-arm
             goos: linux
             goarch: arm64
             suffix: linux-arm64
-          - os: macos-latest
+          - os: macos-13
             goos: darwin
             goarch: amd64
             suffix: darwin-amd64
@@ -46,6 +52,27 @@ jobs:
         with:
           go-version: "1.24"
 
+      - name: Install Tesseract/Leptonica dev libraries (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libtesseract-dev libleptonica-dev pkg-config
+
+      - name: Install Tesseract/Leptonica dev libraries (macOS)
+        if: runner.os == 'macOS'
+        run: brew install tesseract pkg-config
+
+      - name: Set up MSYS2 (Windows CGO toolchain + Tesseract/Leptonica)
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-tesseract-ocr
+            mingw-w64-x86_64-leptonica
+            mingw-w64-x86_64-pkg-config
+
       - name: Determine version
         id: version
         shell: bash
@@ -58,12 +85,23 @@ jobs:
           fi
           echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Build
+      - name: Fetch native tokenizers library
+        working-directory: src
+        run: go run ./tools/fetchnative
+
+      - name: Build (Windows, via MSYS2 MinGW shell)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
         working-directory: src
         env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-          CGO_ENABLED: "0"
+          CGO_ENABLED: "1"
+        run: go build -ldflags="-X main.version=${{ steps.version.outputs.VERSION }} -s -w" -o zolam.exe ./cmd/zolam/
+
+      - name: Build (Linux/macOS)
+        if: runner.os != 'Windows'
+        working-directory: src
+        env:
+          CGO_ENABLED: "1"
         run: go build -ldflags="-X main.version=${{ steps.version.outputs.VERSION }} -s -w" -o zolam ./cmd/zolam/
 
       - name: Rename binary (unix)
@@ -72,7 +110,7 @@ jobs:
 
       - name: Rename binary (windows)
         if: matrix.goos == 'windows'
-        run: mv src/zolam zolam-${{ matrix.suffix }}.exe
+        run: mv src/zolam.exe zolam-${{ matrix.suffix }}.exe
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -124,4 +162,3 @@ jobs:
         with:
           commit_message: "chore: update scoop manifest to ${{ github.ref_name }}"
           file_pattern: zolam.json
-
