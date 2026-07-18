@@ -22,9 +22,11 @@ type V3SyncOptions struct {
 	// Root is the directory whose .zolam/ subdirectory holds the project's
 	// files. Empty means the current working directory.
 	Root string
-	// Dirs, when non-empty, sets/overrides the project's source_dirs. When
-	// empty on an existing project, the stored source_dirs are used; when
-	// empty on a brand new project, Root itself is used.
+	// Dirs sets/overrides the project's source_dirs and is always required,
+	// on the first ingest and every re-sync alike (pass "." to index Root
+	// itself). Incremental behaviour (only added/changed/removed files are
+	// reprocessed) comes entirely from diffing against file-hashes.json, not
+	// from omitting Dirs.
 	Dirs []string
 	// Extensions and Backend only matter when creating a brand new project;
 	// they are ignored (a stored mismatch on Backend is an error) once a
@@ -54,6 +56,10 @@ func ResolveRoot(dir string) (string, error) {
 // calls this for every run (both first-time ingest and incremental
 // re-sync).
 func RunV3Sync(opts V3SyncOptions, outputFn func(string)) (*UpdateResult, *domain.Project, error) {
+	if len(opts.Dirs) == 0 {
+		return nil, nil, fmt.Errorf("zolam ingest requires at least one directory, e.g. 'zolam ingest ./notes' (use 'zolam ingest .' to index the current directory itself)")
+	}
+
 	root, err := ResolveRoot(opts.Root)
 	if err != nil {
 		return nil, nil, err
@@ -133,12 +139,39 @@ func RunV3Sync(opts V3SyncOptions, outputFn func(string)) (*UpdateResult, *domai
 	return result, project, nil
 }
 
-func loadOrCreateProject(projectDir, root string, opts V3SyncOptions) (*domain.Project, error) {
+// RunV3Update re-syncs an existing project using the source_dirs already
+// recorded in its project.json, so callers (the 'zolam ingest update'
+// subcommand) don't need to name a directory again. Unlike RunV3Sync, it
+// errors if no project exists yet rather than creating one — first-time
+// ingest still requires 'zolam ingest <dir>' to establish source_dirs
+// explicitly.
+func RunV3Update(root string, reset bool, outputFn func(string)) (*UpdateResult, *domain.Project, error) {
+	resolvedRoot, err := ResolveRoot(root)
+	if err != nil {
+		return nil, nil, err
+	}
+	projectDir := domain.LocalProjectDir(resolvedRoot)
 	if !domain.Exists(projectDir) {
-		dirs := opts.Dirs
-		if len(dirs) == 0 {
-			dirs = []string{root}
-		}
+		return nil, nil, fmt.Errorf("no zolam project in %s; run 'zolam ingest <dir>' there first", resolvedRoot)
+	}
+	project, err := domain.Load(projectDir)
+	if err != nil {
+		return nil, nil, fmt.Errorf("loading project in %s: %w", projectDir, err)
+	}
+	return RunV3Sync(V3SyncOptions{
+		Root:  root,
+		Dirs:  project.SourceDirs,
+		Reset: reset,
+	}, outputFn)
+}
+
+func loadOrCreateProject(projectDir, root string, opts V3SyncOptions) (*domain.Project, error) {
+	absDirs, err := absPaths(opts.Dirs)
+	if err != nil {
+		return nil, err
+	}
+
+	if !domain.Exists(projectDir) {
 		backend := opts.Backend
 		if backend == "" {
 			backend = domain.DefaultBackend
@@ -150,10 +183,6 @@ func loadOrCreateProject(projectDir, root string, opts V3SyncOptions) (*domain.P
 		if len(extensions) == 0 {
 			extensions = SupportedFileExtensions
 		}
-		absDirs, err := absPaths(dirs)
-		if err != nil {
-			return nil, err
-		}
 		return domain.New(backend, absDirs, extensions), nil
 	}
 
@@ -164,13 +193,7 @@ func loadOrCreateProject(projectDir, root string, opts V3SyncOptions) (*domain.P
 	if opts.Backend != "" && opts.Backend != project.Backend {
 		return nil, fmt.Errorf("this project was created with backend %q; use --reset to switch to %q", project.Backend, opts.Backend)
 	}
-	if len(opts.Dirs) > 0 {
-		absDirs, err := absPaths(opts.Dirs)
-		if err != nil {
-			return nil, err
-		}
-		project.SourceDirs = absDirs
-	}
+	project.SourceDirs = absDirs
 	if len(opts.Extensions) > 0 {
 		project.Extensions = opts.Extensions
 	}
@@ -188,7 +211,7 @@ func LoadV3Project(dir string) (*domain.Project, string, error) {
 	}
 	projectDir := domain.LocalProjectDir(root)
 	if !domain.Exists(projectDir) {
-		return nil, "", fmt.Errorf("no zolam project in %s; run 'zolam ingest' there first", root)
+		return nil, "", fmt.Errorf("no zolam project in %s; run 'zolam ingest <dir>' there first", root)
 	}
 	project, err := domain.Load(projectDir)
 	if err != nil {

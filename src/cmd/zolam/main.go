@@ -79,7 +79,8 @@ func main() {
 		Long: "A CLI tool that indexes files in the current directory into a flat-file\n" +
 			"index (duckdb/jsonl) for semantic search via Claude Code/OpenCode, with no\n" +
 			"background service required.\n\n" +
-			"  zolam ingest [dirs...]   index files (creates the project, or refreshes it)\n" +
+			"  zolam ingest <dirs...>   index files (creates the project, or refreshes it)\n" +
+			"  zolam ingest update      re-sync using the directories already in project.json\n" +
 			"  zolam query <text>       search the index\n\n" +
 			"The legacy Docker/ChromaDB workflow lives under 'zolam chromadb'.",
 		Version: version,
@@ -184,13 +185,17 @@ func newIngestCmd() *cobra.Command {
 	var reset bool
 
 	cmd := &cobra.Command{
-		Use:   "ingest [directories...]",
+		Use:   "ingest <directories...>",
 		Short: "Index files into the project (creates it, or refreshes it)",
 		Long: "Index files into the current directory's flat-file project (duckdb by\n" +
-			"default, or jsonl). With no arguments, indexes the current directory\n" +
-			"itself using every supported extension; pass one or more directories\n" +
-			"and/or --extensions to narrow it. Safe to re-run at any time: only\n" +
-			"added, changed, or removed files are reprocessed.",
+			"default, or jsonl). Always name one or more subdirectories to scope\n" +
+			"what gets indexed (pass '.' to index the current directory itself,\n" +
+			"including dotfiles/dirs) — this applies on every run, not just the\n" +
+			"first. Safe to re-run at any time: incremental behaviour (only\n" +
+			"added/changed/removed files are reprocessed) comes from diffing\n" +
+			"against the stored file hashes, not from omitting directories.\n\n" +
+			"To re-sync without naming directories again, use 'zolam ingest update',\n" +
+			"which reuses the directories already recorded in project.json.",
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dirs, exts := splitArgsFromExtensions(args, extensions)
@@ -214,6 +219,36 @@ func newIngestCmd() *cobra.Command {
 
 	cmd.Flags().StringSliceVar(&extensions, "extensions", nil, "File extensions to include (default: all supported types)")
 	cmd.Flags().StringVar(&backend, "backend", "", "Index backend: duckdb (default) or jsonl")
+	cmd.Flags().BoolVar(&reset, "reset", false, "Delete the local index and re-ingest from scratch")
+	cmd.AddCommand(newIngestUpdateCmd())
+
+	return cmd
+}
+
+func newIngestUpdateCmd() *cobra.Command {
+	var reset bool
+
+	cmd := &cobra.Command{
+		Use:   "update",
+		Short: "Re-sync using the directories already recorded in project.json",
+		Long: "Re-scans the source directories already stored in this project's\n" +
+			"project.json — no directory argument needed — and reprocesses only\n" +
+			"added, changed, or removed files. Fails if no project exists yet;\n" +
+			"first-time ingest still requires 'zolam ingest <dir>'.",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			result, proj, err := zolam.RunV3Update("", reset, func(line string) {
+				fmt.Println(line)
+			})
+			if err != nil {
+				return err
+			}
+			fmt.Printf("\nIngest complete (%s backend): %d new, %d changed, %d removed, %d unchanged\n",
+				proj.Backend, result.Added, result.Changed, result.Removed, result.Unchanged)
+			return nil
+		},
+	}
+
 	cmd.Flags().BoolVar(&reset, "reset", false, "Delete the local index and re-ingest from scratch")
 
 	return cmd
