@@ -59,7 +59,7 @@ skill directory (e.g. `~/.claude/skills/` or `~/.config/opencode/skills/`).
 
 ## .zolam directory
 
-The following are stored in the `.zolam` directory:
+The first time you run "ingest", zolam creates a `.zolam` subdirectory in your current path (so `.zolam` is per-project or per-directory essentially). The following are stored in this `.zolam` directory:
 
 ```
   project.json         # metadata for the ingestion
