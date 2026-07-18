@@ -76,7 +76,9 @@ jobs:
         with:
           msystem: MINGW64
           install: >-
+            git
             mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-rust
             mingw-w64-x86_64-tesseract-ocr
             mingw-w64-x86_64-leptonica
             mingw-w64-x86_64-pkg-config
@@ -92,6 +94,27 @@ jobs:
             VERSION="dev"
           fi
           echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+
+      # daulet/tokenizers only publishes prebuilt libtokenizers.a for
+      # linux/darwin (see its .github/workflows/release.yml) — there's no
+      # windows-amd64 release asset, so fetchnative's download 404s. Build
+      # the static lib ourselves from the same tagged source with the
+      # MSYS2 MinGW toolchain (matching the GNU ABI the Go bindings expect
+      # on windows: `#cgo windows LDFLAGS: -ltokenizers -lm -lstdc++
+      # -lws2_32 -luserenv`) and drop it where fetchnative would have
+      # written it; fetchnative then sees the file and skips its download.
+      - name: Build libtokenizers.a from source (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        working-directory: src
+        run: |
+          set -e
+          TOK_VERSION=$(awk '/daulet\/tokenizers/ {print $2}' go.mod)
+          echo "Building daulet/tokenizers $TOK_VERSION for windows-amd64"
+          git clone --depth 1 --branch "$TOK_VERSION" https://github.com/daulet/tokenizers.git /tmp/tokenizers-src
+          cargo build --release --manifest-path /tmp/tokenizers-src/Cargo.toml -p tokenizers-ffi
+          mkdir -p native/tokenizers
+          cp /tmp/tokenizers-src/target/release/libtokenizers_ffi.a native/tokenizers/libtokenizers.a
 
       - name: Fetch native tokenizers library
         working-directory: src
