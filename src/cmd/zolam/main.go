@@ -294,12 +294,11 @@ func newInitCmd() *cobra.Command {
 				fmt.Print(zolam.ClaudeSkillSnippet)
 				return nil
 			case "opencode":
-				path, err := zolam.WriteOpencodeInstructions()
+				path, err := zolam.WriteOpencodeSkill()
 				if err != nil {
 					return err
 				}
-				fmt.Printf("Installed instructions: %s\n", path)
-				fmt.Println("Verify this matches OpenCode's current custom-instructions convention; it may change between releases.")
+				fmt.Printf("Installed skill: %s\n", path)
 				return nil
 			default:
 				return fmt.Errorf("unsupported target %q, supported: claude, opencode", args[0])
