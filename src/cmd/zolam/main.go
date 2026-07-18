@@ -90,7 +90,6 @@ func main() {
 	rootCmd.AddCommand(
 		newIngestCmd(),
 		newQueryCmd(),
-		newInitCmd(),
 		newChromaDBCmd(),
 	)
 
@@ -274,37 +273,6 @@ func newQueryCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "Output machine-readable JSON")
 
 	return cmd
-}
-
-func newInitCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "init <claude|opencode>",
-		Short: "Install AI-tool integration for zolam (skill/instructions, no MCP)",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			switch args[0] {
-			case "claude":
-				path, err := zolam.WriteClaudeSkill()
-				if err != nil {
-					return err
-				}
-				fmt.Printf("Installed skill: %s\n\n", path)
-				fmt.Println("Suggested addition to a repo's CLAUDE.md:")
-				fmt.Println()
-				fmt.Print(zolam.ClaudeSkillSnippet)
-				return nil
-			case "opencode":
-				path, err := zolam.WriteOpencodeSkill()
-				if err != nil {
-					return err
-				}
-				fmt.Printf("Installed skill: %s\n", path)
-				return nil
-			default:
-				return fmt.Errorf("unsupported target %q, supported: claude, opencode", args[0])
-			}
-		},
-	}
 }
 
 // newChromaDBCmd groups the legacy Docker/ChromaDB workflow: the container
