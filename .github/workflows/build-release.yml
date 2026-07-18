@@ -50,7 +50,12 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version: "1.24"
+          # Read the required version from go.mod (currently 1.25.0)
+          # instead of pinning it here, so the two can't drift out of
+          # sync — setup-go@v6 sets GOTOOLCHAIN=local when go-version
+          # is pinned explicitly, which blocks Go's usual toolchain
+          # auto-download and turns a stale pin into a hard failure.
+          go-version-file: src/go.mod
           cache-dependency-path: src/go.sum
 
       - name: Install Tesseract/Leptonica dev libraries (Linux)
