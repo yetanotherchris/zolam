@@ -56,6 +56,9 @@ npx skills add https://github.com/yetanotherchris/zolam
 This installs `skills/zolam/SKILL.md` from this repo into your agent's
 skill directory (e.g. `~/.claude/skills/` or `~/.config/opencode/skills/`).
 
+
+## .zolam directory
+
 The following are stored in the `.zolam` directory:
 
 ```
@@ -66,10 +69,7 @@ The following are stored in the `.zolam` directory:
   file-hashes.json     # incremental-update state
 ```
 
-
-## Index backends
-
-Set with `--backend` on first `ingest` (recorded thereafter in `project.json`):
+You can change the way the text and embeds are stored with `--backend` on first `ingest` (recorded thereafter in `project.json`):
 
 | Backend | When to use |
 |---|---|
