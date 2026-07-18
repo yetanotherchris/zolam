@@ -67,7 +67,7 @@ func TestHashDirectory(t *testing.T) {
 		}
 	}
 
-	hashes, err := HashDirectory(dir, []string{".md", ".txt"})
+	hashes, err := HashDirectory(dir, dir, []string{".md", ".txt"})
 	if err != nil {
 		t.Fatalf("HashDirectory() returned error: %v", err)
 	}
@@ -78,15 +78,13 @@ func TestHashDirectory(t *testing.T) {
 	}
 
 	// Verify the .go file is excluded.
-	goPath := filepath.Join(dir, "main.go")
-	if _, ok := hashes[goPath]; ok {
+	if _, ok := hashes["main.go"]; ok {
 		t.Error("HashDirectory() included main.go, but .go was not in the extensions list")
 	}
 
-	// Verify hashes for included files.
+	// Verify hashes for included files, keyed relative to root.
 	for _, name := range []string{"notes.md", "readme.txt"} {
-		path := filepath.Join(dir, name)
-		got, ok := hashes[path]
+		got, ok := hashes[name]
 		if !ok {
 			t.Errorf("HashDirectory() missing entry for %s", name)
 			continue
@@ -102,7 +100,7 @@ func TestHashDirectory(t *testing.T) {
 func TestHashDirectory_Empty(t *testing.T) {
 	dir := t.TempDir()
 
-	hashes, err := HashDirectory(dir, []string{".md", ".txt"})
+	hashes, err := HashDirectory(dir, dir, []string{".md", ".txt"})
 	if err != nil {
 		t.Fatalf("HashDirectory() returned error: %v", err)
 	}

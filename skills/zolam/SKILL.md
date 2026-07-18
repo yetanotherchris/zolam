@@ -17,7 +17,7 @@ Workflow for answering a question from the user's documents:
 
 1. Identify the relevant directory (from context, or ask the user). Check for `.zolam/project.json` there; if missing, tell the user to run `zolam ingest` in that directory first.
 2. Read `.zolam/index.md` in that directory — a summary of every indexed file. Often this alone identifies the right document.
-3. Always run `zolam query "<question>"` from that directory at least once — this is the tool the skill exists to invoke, and confirms the index is actually live. Results include file path, page, and the matching chunk.
+3. Always run `zolam query "<question>"` from that directory at least once — this is the tool the skill exists to invoke, and confirms the index is actually live. Each result is printed as `N. [score] path (page P, chunk C)` followed by the matching chunk text — the score is a semantic-similarity number (higher is a better match) shown only for the default embedding search, and omitted with `--keyword`. Paths are relative to the project directory (the one containing `.zolam/`), so resolve them against it, not against your current working directory.
 4. Supplement with grep for precise keyword/date lookups the embedding search might miss: `grep -ri "<term>" .zolam/extracted/` (binary docs) and the original source dirs listed in `.zolam/index.md` (plain-text docs).
 5. Always open the full extracted file (`.zolam/extracted/<file>.md`) or the original source file to read surrounding context before answering — do not answer from an isolated chunk if the question depends on context.
 6. Cite the source file (and page for PDFs) in your answer.

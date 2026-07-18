@@ -112,9 +112,9 @@ func summaryLine(title string, headings []string, excerpt string) string {
 
 // fileSummary reads the appropriate source (the sidecar for binary formats,
 // the original file otherwise) and produces a heuristic index.md entry.
-// Missing/unreadable sources degrade to a filename-only entry rather than
-// failing the whole index.md generation.
-func fileSummary(projectDir, path string) (summary string, extractedRel string) {
+// path is relative to root. Missing/unreadable sources degrade to a
+// filename-only entry rather than failing the whole index.md generation.
+func fileSummary(projectDir, root, path string) (summary string, extractedRel string) {
 	name := filepath.Base(path)
 	ext := strings.ToLower(filepath.Ext(path))
 
@@ -127,7 +127,7 @@ func fileSummary(projectDir, path string) (summary string, extractedRel string) 
 		}
 		text = stripFrontMatter(string(data))
 	} else {
-		data, err := os.ReadFile(path)
+		data, err := os.ReadFile(filepath.Join(root, path))
 		if err != nil {
 			return name, ""
 		}
@@ -140,30 +140,52 @@ func fileSummary(projectDir, path string) (summary string, extractedRel string) 
 
 // sourceDirLabel returns the configured source directory a file falls
 // under (matched by longest path prefix), or "Other" if none match.
-func sourceDirLabel(path string, sourceDirs []string) string {
+// sourceDirs and path are both relative to the project root; "." denotes
+// a source dir that is the root itself, labelled rootLabel.
+func sourceDirLabel(path string, sourceDirs []string, rootLabel string) string {
 	best := ""
+	bestIsRoot := false
 	for _, dir := range sourceDirs {
+		if dir == "." {
+			if best == "" {
+				best, bestIsRoot = dir, true
+			}
+			continue
+		}
 		if path == dir || strings.HasPrefix(path, dir+string(filepath.Separator)) {
-			if len(dir) > len(best) {
-				best = dir
+			if bestIsRoot || len(dir) > len(best) {
+				best, bestIsRoot = dir, false
 			}
 		}
 	}
-	if best == "" {
+	switch {
+	case best == "":
 		return "Other"
+	case bestIsRoot:
+		return rootLabel
+	default:
+		return filepath.Base(best)
 	}
-	return filepath.Base(best)
 }
 
 // GenerateIndexMD regenerates <projectDir>/index.md from the files
 // currently on disk: plain-text sources are read directly, and binary
 // formats are read from their extracted/ sidecar. currentFiles is
-// the full set of indexed paths (e.g. from file-hashes.json) after this
-// run's adds/changes/removals have been applied.
-func GenerateIndexMD(project *domain.Project, projectName, projectDir string, currentFiles map[string]string) error {
+// the full set of indexed paths (e.g. from file-hashes.json), relative to
+// root, after this run's adds/changes/removals have been applied.
+func GenerateIndexMD(project *domain.Project, projectName, projectDir, root string, currentFiles map[string]string) error {
+	relSourceDirs := make([]string, len(project.SourceDirs))
+	for i, dir := range project.SourceDirs {
+		rel, err := filepath.Rel(root, dir)
+		if err != nil {
+			rel = dir
+		}
+		relSourceDirs[i] = rel
+	}
+
 	groups := make(map[string][]string)
 	for path := range currentFiles {
-		label := sourceDirLabel(path, project.SourceDirs)
+		label := sourceDirLabel(path, relSourceDirs, projectName)
 		groups[label] = append(groups[label], path)
 	}
 
@@ -183,9 +205,12 @@ func GenerateIndexMD(project *domain.Project, projectName, projectDir string, cu
 		sort.Strings(paths)
 		fmt.Fprintf(&b, "\n## %s\n", label)
 		for _, path := range paths {
-			summary, extractedRel := fileSummary(projectDir, path)
+			summary, extractedRel := fileSummary(projectDir, root, path)
 			name := filepath.Base(path)
-			line := fmt.Sprintf("- [%s](%s): %s", name, path, summary)
+			// index.md lives in <root>/.zolam, one level below root, so a
+			// root-relative path needs "../" to link back to the source file.
+			href := filepath.ToSlash(filepath.Join("..", path))
+			line := fmt.Sprintf("- [%s](%s): %s", name, href, summary)
 			if extractedRel != "" {
 				line += " — extracted: " + filepath.ToSlash(extractedRel)
 			}

@@ -39,11 +39,11 @@ func TestGenerateIndexMD(t *testing.T) {
 		LastIngest: time.Date(2026, 7, 17, 0, 0, 0, 0, time.UTC),
 	}
 	currentFiles := map[string]string{
-		mdPath:  "hash1",
-		pdfPath: "hash2",
+		"notes.md":   "hash1",
+		"report.pdf": "hash2",
 	}
 
-	if err := GenerateIndexMD(project, "my-project", projectDir, currentFiles); err != nil {
+	if err := GenerateIndexMD(project, "my-project", projectDir, sourceDir, currentFiles); err != nil {
 		t.Fatalf("GenerateIndexMD() returned error: %v", err)
 	}
 
@@ -81,15 +81,15 @@ func TestGenerateIndexMD(t *testing.T) {
 
 func TestGenerateIndexMD_MissingSourceDegradesGracefully(t *testing.T) {
 	projectDir := t.TempDir()
-	missingPath := filepath.Join(t.TempDir(), "gone.md")
+	root := t.TempDir() // "gone.md" is never actually written here.
 
 	project := &domain.Project{
-		SourceDirs: []string{filepath.Dir(missingPath)},
+		SourceDirs: []string{root},
 		LastIngest: time.Now(),
 	}
-	currentFiles := map[string]string{missingPath: "hash"}
+	currentFiles := map[string]string{"gone.md": "hash"}
 
-	if err := GenerateIndexMD(project, "proj", projectDir, currentFiles); err != nil {
+	if err := GenerateIndexMD(project, "proj", projectDir, root, currentFiles); err != nil {
 		t.Fatalf("GenerateIndexMD() returned error for missing file: %v", err)
 	}
 
