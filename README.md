@@ -2,7 +2,7 @@
 
 Ingest your personal files (PDF, Markdown, Docx, Txt, code) into a local flat-file/DuckDB/ChromaDb index for semantic search in Claude Code / OpenCode. 
 
-Zolam is a Go CLI that walks your directories, extracting and chunking text (via Python), hashes files for incremental updates, and generates a human-readable `index.md` summary.  It stores what it needs in `.zolam` directory.
+Zolam is a Go CLI that will walk subdirectories, extracting and chunking text and creating embeds (via Python). It hashes files for incremental updates, and generates a human-readable `index.md` summary.  It stores what it needs in `.zolam` directory.
 
 ## Quick Start
 
