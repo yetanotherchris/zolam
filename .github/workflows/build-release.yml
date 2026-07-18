@@ -149,22 +149,23 @@ jobs:
           # MSYS2 packages installed above live under the MINGW64
           # prefix instead. Point CGO at it explicitly (same fix as
           # the macOS leg above, adapted for MSYS2's path).
+          #
+          # MSYS2's leptonica package only ships an import library
+          # (libleptonica.dll.a, confirmed by `ls /mingw64/lib` in an
+          # earlier run of this step) with no true static
+          # libleptonica.a. duckdb-go-bindings' own #cgo LDFLAGS
+          # includes a trailing --static, which puts ld into
+          # static-only library search for the whole link — so even
+          # though -lleptonica appears earlier on the command line, ld
+          # can't resolve it to the dynamic-only .dll.a and reports
+          # "cannot find -lleptonica". Force -Bdynamic back on ahead
+          # of every package's own LDFLAGS (CGO_LDFLAGS gets inserted
+          # before each cgo package's block) so leptonica/tesseract
+          # resolve via their import libraries regardless of what
+          # duckdb's flags do later in the command.
           export CGO_CFLAGS="-I$(cygpath -m /mingw64/include)"
           export CGO_CXXFLAGS="-I$(cygpath -m /mingw64/include)"
-          export CGO_LDFLAGS="-L$(cygpath -m /mingw64/lib)"
-
-          # -L alone isn't enough if MSYS2's package names the import
-          # library differently than gosseract's hardcoded -lleptonica
-          # expects (Debian/Homebrew ship "leptonica", MSYS2's own
-          # pkgconfig module is called "lept" — the .a name may follow
-          # suit). Log what's actually there, and alias it either way
-          # so `-lleptonica` resolves regardless of which convention
-          # this MSYS2 package release used.
-          echo "---- /mingw64/lib (lept/tesseract) ----"
-          ls -la /mingw64/lib | grep -iE 'lept|tesseract' || true
-          echo "----------------------------------------"
-          ln -sf /mingw64/lib/liblept.dll.a /mingw64/lib/libleptonica.dll.a 2>/dev/null || true
-          ln -sf /mingw64/lib/liblept.a /mingw64/lib/libleptonica.a 2>/dev/null || true
+          export CGO_LDFLAGS="-Wl,-Bdynamic -L$(cygpath -m /mingw64/lib)"
           go build -ldflags="-X main.version=${{ steps.version.outputs.VERSION }} -s -w" -o zolam.exe ./cmd/zolam/
 
       - name: Build (Linux/macOS)
