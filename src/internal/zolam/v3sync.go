@@ -23,8 +23,9 @@ type V3SyncOptions struct {
 	// files. Empty means the current working directory.
 	Root string
 	// Dirs, when non-empty, sets/overrides the project's source_dirs. When
-	// empty on an existing project, the stored source_dirs are used; when
-	// empty on a brand new project, Root itself is used.
+	// empty on an existing project, the stored source_dirs are used; empty
+	// on a brand new project is an error — first-time ingest must name at
+	// least one subdirectory (pass "." to index Root itself).
 	Dirs []string
 	// Extensions and Backend only matter when creating a brand new project;
 	// they are ignored (a stored mismatch on Backend is an error) once a
@@ -61,6 +62,15 @@ func RunV3Sync(opts V3SyncOptions, outputFn func(string)) (*UpdateResult, *domai
 	projectDir := domain.LocalProjectDir(root)
 
 	if opts.Reset {
+		// A bare '--reset' (no dirs) re-indexes the same directories as
+		// before, e.g. to recover from an embedding-model mismatch; carry
+		// the existing source_dirs through the wipe so loadOrCreateProject
+		// doesn't mistake this for a brand new, unscoped project.
+		if len(opts.Dirs) == 0 {
+			if existing, err := domain.Load(projectDir); err == nil {
+				opts.Dirs = existing.SourceDirs
+			}
+		}
 		if err := domain.Remove(projectDir); err != nil {
 			return nil, nil, fmt.Errorf("resetting project: %w", err)
 		}
@@ -135,10 +145,10 @@ func RunV3Sync(opts V3SyncOptions, outputFn func(string)) (*UpdateResult, *domai
 
 func loadOrCreateProject(projectDir, root string, opts V3SyncOptions) (*domain.Project, error) {
 	if !domain.Exists(projectDir) {
-		dirs := opts.Dirs
-		if len(dirs) == 0 {
-			dirs = []string{root}
+		if len(opts.Dirs) == 0 {
+			return nil, fmt.Errorf("no zolam project in %s yet; pass one or more subdirectories to scope ingestion, e.g. 'zolam ingest <dir>' (use 'zolam ingest .' to index this whole directory)", root)
 		}
+		dirs := opts.Dirs
 		backend := opts.Backend
 		if backend == "" {
 			backend = domain.DefaultBackend

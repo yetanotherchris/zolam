@@ -77,6 +77,9 @@ func TestGenerateIndexMD(t *testing.T) {
 	if strings.Contains(got, "source: "+pdfPath) {
 		t.Errorf("expected YAML front matter to be stripped from summary, got:\n%s", got)
 	}
+	if strings.Contains(got, sourceDir) {
+		t.Errorf("expected no absolute source dir path leaked into index.md, got:\n%s", got)
+	}
 }
 
 func TestGenerateIndexMD_MissingSourceDegradesGracefully(t *testing.T) {

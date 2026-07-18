@@ -195,10 +195,18 @@ func GenerateIndexMD(project *domain.Project, projectName, projectDir, root stri
 	}
 	sort.Strings(labels)
 
+	displaySourceDirs := make([]string, len(relSourceDirs))
+	for i, dir := range relSourceDirs {
+		if dir == "." {
+			dir = projectName
+		}
+		displaySourceDirs[i] = dir
+	}
+
 	var b strings.Builder
 	fmt.Fprintf(&b, "# %s\n\n", projectName)
 	fmt.Fprintf(&b, "> %d files indexed from %s. Last updated %s.\n",
-		len(currentFiles), strings.Join(project.SourceDirs, ", "), project.LastIngest.Format("2006-01-02"))
+		len(currentFiles), strings.Join(displaySourceDirs, ", "), project.LastIngest.Format("2006-01-02"))
 
 	for _, label := range labels {
 		paths := groups[label]

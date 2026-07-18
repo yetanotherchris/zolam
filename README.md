@@ -32,8 +32,9 @@ Subdirectories are scanned recursively. Binary formats (PDF, DOCX) get a markdow
 
 ```
 # Ingest files into the current directory's project (defaults to the duckdb backend)
+# The first ingest must name a directory to scope what gets indexed
 cd ~/notes
-zolam ingest --extensions .md,.pdf
+zolam ingest . --extensions .md,.pdf
 zolam ingest ./my-sub-dir
 
 # Safe to re-run any time — only added/changed/removed files are reprocessed

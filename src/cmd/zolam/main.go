@@ -187,10 +187,12 @@ func newIngestCmd() *cobra.Command {
 		Use:   "ingest [directories...]",
 		Short: "Index files into the project (creates it, or refreshes it)",
 		Long: "Index files into the current directory's flat-file project (duckdb by\n" +
-			"default, or jsonl). With no arguments, indexes the current directory\n" +
-			"itself using every supported extension; pass one or more directories\n" +
-			"and/or --extensions to narrow it. Safe to re-run at any time: only\n" +
-			"added, changed, or removed files are reprocessed.",
+			"default, or jsonl). The first time you ingest, name one or more\n" +
+			"subdirectories to scope what gets indexed (pass '.' to index the\n" +
+			"current directory itself, including dotfiles/dirs); re-running with\n" +
+			"no arguments re-syncs using the directories the project already has.\n" +
+			"Safe to re-run at any time: only added, changed, or removed files are\n" +
+			"reprocessed.",
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dirs, exts := splitArgsFromExtensions(args, extensions)
