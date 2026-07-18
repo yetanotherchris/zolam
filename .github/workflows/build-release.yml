@@ -82,6 +82,10 @@ jobs:
         uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
+          # setup-go installs Go on the Windows PATH, which the MSYS2
+          # shell doesn't see by default (path-type: minimal) — the
+          # subsequent "shell: msys2 {0}" build step needs `go` on PATH.
+          path-type: inherit
           install: >-
             git
             mingw-w64-x86_64-gcc
