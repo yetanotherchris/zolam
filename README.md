@@ -17,10 +17,6 @@ time — it's both the first-time indexer and the incremental updater.
 
 ## Quick Start
 
-**Prerequisite:** [uv](https://docs.astral.sh/uv/getting-started/installation/) (`brew install uv`, `winget install astral-sh.uv`, or `scoop install uv`). uv provisions Python and every pipeline dependency itself on first run.
-
-**Optional:** [Tesseract](https://github.com/tesseract-ocr/tesseract) (`brew install tesseract`, `apt install tesseract-ocr`, or `scoop install tesseract`) for OCR on scanned PDFs with no text layer. Without it, such pages are indexed as empty text. zolam auto-detects the `tessdata` language-file folder from a Tesseract install on PATH; if OCR still fails with "Tesseract is not installed" after installing it, set `TESSDATA_PREFIX` to your `tessdata` folder directly (e.g. the `tessdata` subfolder next to `tesseract.exe`), then re-run `zolam ingest --reset` to reprocess any PDFs that were indexed with empty OCR text. On Windows, scoop's `tesseract` package doesn't include language data — also run `scoop install tesseract-languages`, or if that fails, download `eng.traineddata` from [tessdata_fast](https://github.com/tesseract-ocr/tessdata_fast) and drop it into the persisted `tessdata` folder yourself.
-
 ```bash
 # Install uv 
 curl -LsSf https://astral.sh/uv/install.sh | sh
