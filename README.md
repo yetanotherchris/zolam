@@ -28,6 +28,11 @@ brew install uv             # macOS/Linux
 winget install astral-sh.uv # Windows
 scoop install uv            # Windows
 
+# Optional: Tesseract, for OCR on scanned PDFs with no text layer
+brew install tesseract       # macOS/Linux
+apt install tesseract-ocr    # Linux
+scoop install tesseract      # Windows
+
 # Ingest files into the current directory's project (defaults to the duckdb backend)
 cd ~/notes
 zolam ingest --extensions .md,.pdf
