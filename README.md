@@ -8,10 +8,10 @@ Zolam is a Go CLI that walks your directories, extracting and chunking text (via
 
 ```bash
 # Install uv (required)
-curl -LsSf https://astral.sh/uv/install.sh | sh
 brew install uv             # macOS/Linux
 winget install astral-sh.uv # Windows
 scoop install uv            # Windows
+curl -LsSf https://astral.sh/uv/install.sh | sh # macOS/Linux
 
 # MacOS/Linux
 brew install yetanotherchris/tap/zolam
@@ -29,7 +29,7 @@ scoop install tesseract-languages    # Windows: language data (eng.traineddata e
 
 ### Example usage
 
-Subdirectories are scanned recursively. Binary formats (PDF, DOCX) get a markdown version under `.zolam/extracted/`;
+Subdirectories are scanned recursively. Binary formats (PDF, DOCX) get a markdown version under `.zolam/extracted/`.
 
 ```
 # Ingest files into the current directory's project (defaults to the duckdb backend)
