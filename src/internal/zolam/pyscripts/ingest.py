@@ -144,11 +144,10 @@ def _find_tessdata_dir() -> str | None:
     Checked in order: TESSDATA_PREFIX, then layouts relative to a
     `tesseract` binary on PATH (following scoop's shim indirection on
     Windows), then well-known per-OS default paths."""
-    env = os.environ.get("TESSDATA_PREFIX")
-    if env and Path(env).is_dir():
-        return env
-
     candidates: list[Path] = []
+    env = os.environ.get("TESSDATA_PREFIX")
+    if env:
+        candidates.append(Path(env))
     tess_bin = shutil.which("tesseract")
     if tess_bin:
         bin_path = Path(tess_bin)
