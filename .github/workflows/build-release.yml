@@ -76,6 +76,7 @@ jobs:
         with:
           msystem: MINGW64
           install: >-
+            git
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-rust
             mingw-w64-x86_64-tesseract-ocr
