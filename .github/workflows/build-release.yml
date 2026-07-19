@@ -95,21 +95,31 @@ jobs:
           echo "CGO_CXXFLAGS=-I$(brew --prefix)/include" >> "$GITHUB_ENV"
           echo "CGO_LDFLAGS=-L$(brew --prefix)/lib" >> "$GITHUB_ENV"
 
-      - name: Set up MSYS2 (Windows CGO toolchain + Tesseract/Leptonica)
+      # Tesseract/Leptonica dev libs only — the actual C compiler for
+      # Windows now comes from Scoop's mingw package (below), not from
+      # MSYS2. Using UCRT64 rather than MINGW64 here matters: DuckDB's
+      # prebuilt Windows static libs reference UCRT entry points
+      # (__stdio_common_vswprintf etc.), and MINGW64 targets the
+      # legacy msvcrt.dll instead of UCRT — UCRT64 and Scoop's mingw
+      # (also a UCRT build, see build-libtokenizers.ps1) keep the
+      # whole toolchain on one consistent CRT.
+      - name: Set up MSYS2 (Tesseract/Leptonica dev libs)
         if: runner.os == 'Windows'
         uses: msys2/setup-msys2@v2
         with:
-          msystem: MINGW64
-          # setup-go installs Go on the Windows PATH, which the MSYS2
-          # shell doesn't see by default (path-type: minimal) — the
-          # subsequent "shell: msys2 {0}" build step needs `go` on PATH.
-          path-type: inherit
+          msystem: UCRT64
           install: >-
-            git
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-tesseract-ocr
-            mingw-w64-x86_64-leptonica
-            mingw-w64-x86_64-pkg-config
+            mingw-w64-ucrt-x86_64-tesseract-ocr
+            mingw-w64-ucrt-x86_64-leptonica
+            mingw-w64-ucrt-x86_64-pkg-config
+
+      # The MSYS2 install path varies by runner (seen at both C:\msys64
+      # and D:\a\_temp\msys64), so resolve it once here via cygpath
+      # rather than hardcoding it in the pwsh build step below.
+      - name: Resolve MSYS2 UCRT64 path
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: echo "UCRT64_ROOT=$(cygpath -m /ucrt64)" >> "$GITHUB_ENV"
 
       - name: Install Scoop
         if: runner.os == 'Windows'
@@ -144,40 +154,50 @@ jobs:
           $tokVersion = (Select-String -Path src\go.mod -Pattern 'daulet/tokenizers\s+(\S+)').Matches[0].Groups[1].Value
           .\build-libtokenizers.ps1 -TokenizersVersion $tokVersion -OutputPath src\native\tokenizers\libtokenizers.a
 
+          # Scoop's own PATH update is registry-level (persistent) but
+          # this job's later steps are separate processes that won't
+          # pick that up automatically — export it via GITHUB_PATH so
+          # the "Build (Windows)" step below can find gcc/g++.
+          "$HOME\scoop\apps\mingw\current\bin" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+          "$HOME\scoop\shims" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+
       - name: Fetch native tokenizers library
         working-directory: src
         run: go run ./tools/fetchnative
 
-      - name: Build (Windows, via MSYS2 MinGW shell)
+      - name: Build (Windows)
         if: runner.os == 'Windows'
-        shell: msys2 {0}
+        shell: pwsh
         working-directory: src
         env:
           CGO_ENABLED: "1"
         run: |
-          set -e
           # gosseract's cgo bridge hardcodes -L/usr/local/lib for its
           # tesseract/leptonica LDFLAGS, which doesn't exist here — the
-          # MSYS2 packages installed above live under the MINGW64
-          # prefix instead. Point CGO at it explicitly (same fix as
-          # the macOS leg above, adapted for MSYS2's path).
+          # MSYS2 UCRT64 packages installed above live under the
+          # ucrt64 prefix instead. Point CGO at it explicitly (same
+          # fix as the macOS leg above, adapted for MSYS2's path).
           #
           # MSYS2's leptonica package only ships an import library
-          # (libleptonica.dll.a, confirmed by `ls /mingw64/lib` in an
-          # earlier run of this step) with no true static
-          # libleptonica.a. duckdb-go-bindings' own #cgo LDFLAGS
-          # includes a trailing --static, which puts ld into
-          # static-only library search for the whole link — so even
-          # though -lleptonica appears earlier on the command line, ld
-          # can't resolve it to the dynamic-only .dll.a and reports
-          # "cannot find -lleptonica". Force -Bdynamic back on ahead
-          # of every package's own LDFLAGS (CGO_LDFLAGS gets inserted
-          # before each cgo package's block) so leptonica/tesseract
-          # resolve via their import libraries regardless of what
-          # duckdb's flags do later in the command.
-          export CGO_CFLAGS="-I$(cygpath -m /mingw64/include)"
-          export CGO_CXXFLAGS="-I$(cygpath -m /mingw64/include)"
-          export CGO_LDFLAGS="-Wl,-Bdynamic -L$(cygpath -m /mingw64/lib)"
+          # (libleptonica.dll.a) with no true static libleptonica.a.
+          # duckdb-go-bindings' own #cgo LDFLAGS includes a trailing
+          # --static, which puts ld into static-only library search
+          # for the whole link — so even though -lleptonica appears
+          # earlier on the command line, ld can't resolve it to the
+          # dynamic-only .dll.a and reports "cannot find -lleptonica".
+          # Force -Bdynamic back on ahead of every package's own
+          # LDFLAGS (CGO_LDFLAGS gets inserted before each cgo
+          # package's block) so leptonica/tesseract resolve via their
+          # import libraries regardless of what duckdb's flags do
+          # later in the command.
+          #
+          # -lntdll: the Rust tokenizers staticlib calls NT syscalls
+          # (NtReadFile etc.) directly; rustc normally adds -lntdll
+          # automatically when linking, but Go's linker does the
+          # actual final link here and has no idea that's needed.
+          $env:CGO_CFLAGS = "-I$env:UCRT64_ROOT/include"
+          $env:CGO_CXXFLAGS = "-I$env:UCRT64_ROOT/include"
+          $env:CGO_LDFLAGS = "-Wl,-Bdynamic -L$env:UCRT64_ROOT/lib -lntdll"
           go build -ldflags="-X main.version=${{ steps.version.outputs.VERSION }} -s -w" -o zolam.exe ./cmd/zolam/
 
       - name: Build (Linux/macOS)
