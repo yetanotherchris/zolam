@@ -36,7 +36,11 @@ jobs:
             goos: linux
             goarch: arm64
             suffix: linux-arm64
-          - os: macos-13
+          # macos-13 (the last plain Intel macOS image) was retired by
+          # GitHub in December 2025 — macos-15-intel is the dedicated
+          # label GitHub kept around for native x86_64 macOS builds
+          # (macos-14/15/latest are all Apple Silicon now).
+          - os: macos-15-intel
             goos: darwin
             goarch: amd64
             suffix: darwin-amd64
