@@ -178,10 +178,15 @@ func onnxRuntimeReleaseAssetFor(goos, arch string) (string, error) {
 }
 
 func ensureOnnxRuntime(outputFn func(string)) (string, error) {
-	dir, err := OnnxRuntimeDir()
+	baseDir, err := OnnxRuntimeDir()
 	if err != nil {
 		return "", err
 	}
+	// Cache under a version-specific subdirectory so bumping
+	// onnxRuntimeVersion (e.g. to fix an API version mismatch) always
+	// downloads the new shared library instead of silently reusing a stale
+	// one left over from a previous zolam version at the old flat path.
+	dir := filepath.Join(baseDir, onnxRuntimeVersion)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", fmt.Errorf("creating onnxruntime directory: %w", err)
 	}
