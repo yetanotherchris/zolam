@@ -1,6 +1,8 @@
 package zolam
 
 import (
+	"archive/zip"
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -107,6 +109,86 @@ func TestExtractAndChunk_PDF_OCRFallback(t *testing.T) {
 	if !strings.Contains(joined, "SYNTHETIC") || !strings.Contains(joined, "OCR") {
 		t.Errorf("expected OCR'd text to contain the synthetic phrase, got: %q", chunks[0].Text)
 	}
+}
+
+// TestSanitizeDocxRelationIDs guards against a regression on Windows-authored
+// docx files containing a "Insert Signature Line" field: Word gives that
+// relationship a non-numeric ID (e.g. "rIdSig100"), which go-docx's
+// parseDocRelation can't parse (strconv.ParseUint on the "Sig100" suffix),
+// making the whole file fail to extract.
+func TestSanitizeDocxRelationIDs(t *testing.T) {
+	const relsXML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="t1" Target="a"/>
+<Relationship Id="rIdSig100" Type="tSig" Target="signatureLine1.wmf"/>
+</Relationships>`
+	const docXML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document><w:body>
+<w:p><w:r r:id="rId1">hello</w:r></w:p>
+<w:pict><v:shape o:relid="rIdSig100"></v:shape></w:pict>
+</w:body></w:document>`
+
+	orig := buildTestZip(t, map[string]string{
+		"word/_rels/document.xml.rels": relsXML,
+		"word/document.xml":            docXML,
+	})
+
+	sanitized, err := sanitizeDocxRelationIDs(orig)
+	if err != nil {
+		t.Fatalf("sanitizeDocxRelationIDs: %v", err)
+	}
+
+	zr, err := zip.NewReader(bytes.NewReader(sanitized), int64(len(sanitized)))
+	if err != nil {
+		t.Fatalf("re-reading sanitized zip: %v", err)
+	}
+	for _, f := range zr.File {
+		content, err := readZipFile(f)
+		if err != nil {
+			t.Fatalf("reading %s: %v", f.Name, err)
+		}
+		if strings.Contains(string(content), "rIdSig100") {
+			t.Errorf("expected rIdSig100 to be rewritten, still present in %s", f.Name)
+		}
+	}
+}
+
+func TestSanitizeDocxRelationIDs_NoOpWhenAllNumeric(t *testing.T) {
+	const relsXML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="t1" Target="a"/>
+</Relationships>`
+
+	orig := buildTestZip(t, map[string]string{
+		"word/_rels/document.xml.rels": relsXML,
+	})
+
+	sanitized, err := sanitizeDocxRelationIDs(orig)
+	if err != nil {
+		t.Fatalf("sanitizeDocxRelationIDs: %v", err)
+	}
+	if !bytes.Equal(orig, sanitized) {
+		t.Errorf("expected no-op when all relationship IDs are already numeric")
+	}
+}
+
+func buildTestZip(t *testing.T, files map[string]string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for name, content := range files {
+		w, err := zw.Create(name)
+		if err != nil {
+			t.Fatalf("create %s: %v", name, err)
+		}
+		if _, err := w.Write([]byte(content)); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatalf("close zip: %v", err)
+	}
+	return buf.Bytes()
 }
 
 func TestRemoveSidecar(t *testing.T) {

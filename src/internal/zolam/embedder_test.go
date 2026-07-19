@@ -4,6 +4,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -80,6 +81,29 @@ func TestEmbedder_SemanticSimilaritySanity(t *testing.T) {
 	t.Logf("sim(cat/feline)=%.4f sim(cat/quantum)=%.4f", simAB, simAC)
 	if simAB <= simAC {
 		t.Errorf("expected paraphrase to score higher than unrelated sentence: simAB=%.4f simAC=%.4f", simAB, simAC)
+	}
+}
+
+// TestEmbedder_TruncatesLongInput guards against a regression where chunks
+// tokenizing to more than the model's 512-position limit (e.g. dense
+// legal/report text within the 2000-rune chunk cap) made the ONNX session
+// fail with a broadcast error instead of truncating.
+func TestEmbedder_TruncatesLongInput(t *testing.T) {
+	prepareCachedEmbeddingAssets(t)
+
+	e, err := NewEmbedder(nil)
+	if err != nil {
+		t.Fatalf("NewEmbedder: %v", err)
+	}
+	defer e.Close()
+
+	long := strings.Repeat("the quick brown fox jumps over the lazy dog. ", 200)
+	vecs, err := e.Embed([]string{long})
+	if err != nil {
+		t.Fatalf("Embed: %v", err)
+	}
+	if len(vecs) != 1 || len(vecs[0]) != 384 {
+		t.Fatalf("expected 1 vector of 384 dims, got %+v", vecs)
 	}
 }
 

@@ -1,11 +1,14 @@
 package zolam
 
 import (
+	"archive/zip"
 	"bytes"
 	"fmt"
 	"image/png"
+	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -138,17 +141,21 @@ func writeTextSidecar(projectDir, sourcePath, text string) error {
 // extractDocx pulls paragraph and table text out of a .docx file, matching
 // python-docx's paragraph-then-table-rows ordering and " | "-joined cells.
 func extractDocx(path string) (string, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-	info, err := f.Stat()
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return "", err
 	}
 
-	doc, err := docx.Parse(f, info.Size())
+	// go-docx assumes every relationship ID is "rId<number>" and hard-fails
+	// (strconv.ParseUint) otherwise. Word features like "Insert Signature
+	// Line" generate non-numeric IDs (e.g. "rIdSig100"), which otherwise
+	// make an affected docx unparseable. Sanitizing is best-effort: if it
+	// fails, fall through and let docx.Parse report on the original bytes.
+	if sanitized, err := sanitizeDocxRelationIDs(data); err == nil {
+		data = sanitized
+	}
+
+	doc, err := docx.Parse(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
 		return "", fmt.Errorf("parsing docx %s: %w", path, err)
 	}
@@ -177,6 +184,93 @@ func extractDocx(path string) (string, error) {
 	return strings.Join(parts, "\n\n"), nil
 }
 
+var (
+	relIDAttrRe    = regexp.MustCompile(`Id="(rId[^"]*)"`)
+	numericRelIDRe = regexp.MustCompile(`^rId[0-9]+$`)
+)
+
+// sanitizeDocxRelationIDs rewrites word/_rels/document.xml.rels and
+// word/document.xml inside a docx zip, replacing any relationship ID that
+// doesn't match go-docx's assumed "rId<number>" format with a synthetic
+// numeric one. Returns the original bytes unchanged (with a nil error) if
+// there's nothing to fix.
+func sanitizeDocxRelationIDs(data []byte) ([]byte, error) {
+	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return nil, err
+	}
+
+	const relsName = "word/_rels/document.xml.rels"
+	var relsFile *zip.File
+	for _, f := range zr.File {
+		if f.Name == relsName {
+			relsFile = f
+			break
+		}
+	}
+	if relsFile == nil {
+		return data, nil
+	}
+	relsBytes, err := readZipFile(relsFile)
+	if err != nil {
+		return nil, err
+	}
+
+	replacements := map[string]string{}
+	next := 9000001
+	for _, m := range relIDAttrRe.FindAllStringSubmatch(string(relsBytes), -1) {
+		id := m[1]
+		if numericRelIDRe.MatchString(id) {
+			continue
+		}
+		if _, ok := replacements[id]; ok {
+			continue
+		}
+		replacements[id] = fmt.Sprintf("rId%d", next)
+		next++
+	}
+	if len(replacements) == 0 {
+		return data, nil
+	}
+
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for _, f := range zr.File {
+		content, err := readZipFile(f)
+		if err != nil {
+			return nil, err
+		}
+		if f.Name == relsName || f.Name == "word/document.xml" {
+			s := string(content)
+			for old, new := range replacements {
+				s = strings.ReplaceAll(s, `"`+old+`"`, `"`+new+`"`)
+			}
+			content = []byte(s)
+		}
+		hdr := f.FileHeader
+		w, err := zw.CreateHeader(&hdr)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := w.Write(content); err != nil {
+			return nil, err
+		}
+	}
+	if err := zw.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+func readZipFile(f *zip.File) ([]byte, error) {
+	rc, err := f.Open()
+	if err != nil {
+		return nil, err
+	}
+	defer rc.Close()
+	return io.ReadAll(rc)
+}
+
 // extractPDFPages extracts each page's text layer, falling back to OCR
 // (rendering the page via go-fitz, then recognising it via gosseract) for
 // pages with no embedded text, e.g. scanned PDFs. Rendering and OCR are
@@ -185,6 +279,9 @@ func extractDocx(path string) (string, error) {
 func extractPDFPages(path string) ([]string, error) {
 	doc, err := fitz.New(path)
 	if err != nil {
+		if !hasPDFHeader(path) {
+			return nil, fmt.Errorf("opening pdf %s: %w (file has no %%PDF- header — it may be corrupted, misnamed, or not actually a PDF)", path, err)
+		}
 		return nil, fmt.Errorf("opening pdf %s: %w", path, err)
 	}
 	defer doc.Close()
@@ -218,6 +315,22 @@ func extractPDFPages(path string) ([]string, error) {
 		ocr.close()
 	}
 	return pages, nil
+}
+
+// hasPDFHeader reports whether path starts with a "%PDF-" marker somewhere
+// in its first 1024 bytes, per the PDF spec's allowance for leading junk
+// before the header. Used only to give a clearer error when go-fitz/MuPDF
+// refuses to open a file, distinguishing "not a PDF at all" from a PDF
+// MuPDF genuinely can't parse.
+func hasPDFHeader(path string) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	buf := make([]byte, 1024)
+	n, _ := io.ReadFull(f, buf)
+	return bytes.Contains(buf[:n], []byte("%PDF-"))
 }
 
 // ocrEngine wraps a single gosseract client. gosseract clients aren't safe
