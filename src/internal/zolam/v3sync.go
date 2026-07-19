@@ -17,7 +17,7 @@ type UpdateResult struct {
 	Unchanged int
 }
 
-// V3SyncOptions controls a flat-file (duckdb/jsonl) ingest run.
+// V3SyncOptions controls a flat-file (sqlite/jsonl) ingest run.
 type V3SyncOptions struct {
 	// Root is the directory whose .zolam/ subdirectory holds the project's
 	// files. Empty means the current working directory.
@@ -176,8 +176,8 @@ func loadOrCreateProject(projectDir, root string, opts V3SyncOptions) (*domain.P
 		if backend == "" {
 			backend = domain.DefaultBackend
 		}
-		if backend != "duckdb" && backend != "jsonl" {
-			return nil, fmt.Errorf("unknown backend %q (expected duckdb or jsonl; the legacy chroma backend is managed separately via 'zolam chromadb')", backend)
+		if backend != "sqlite" && backend != "jsonl" {
+			return nil, fmt.Errorf("unknown backend %q (expected sqlite or jsonl; the legacy chroma backend is managed separately via 'zolam chromadb')", backend)
 		}
 		extensions := opts.Extensions
 		if len(extensions) == 0 {

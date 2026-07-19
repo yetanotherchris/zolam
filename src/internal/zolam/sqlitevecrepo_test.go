@@ -4,9 +4,9 @@ import (
 	"testing"
 )
 
-func TestDuckDBRepo_InsertSearchDeleteRoundTrip(t *testing.T) {
+func TestSQLiteRepo_InsertSearchDeleteRoundTrip(t *testing.T) {
 	dir := t.TempDir()
-	repo, err := OpenDuckDBRepo(dir, "test-model", 3)
+	repo, err := OpenSQLiteRepo(dir, "test-model", 3)
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
@@ -55,9 +55,9 @@ func TestDuckDBRepo_InsertSearchDeleteRoundTrip(t *testing.T) {
 	}
 }
 
-func TestDuckDBRepo_ReopenPreservesData(t *testing.T) {
+func TestSQLiteRepo_ReopenPreservesData(t *testing.T) {
 	dir := t.TempDir()
-	repo, err := OpenDuckDBRepo(dir, "test-model", 3)
+	repo, err := OpenSQLiteRepo(dir, "test-model", 3)
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
@@ -70,7 +70,7 @@ func TestDuckDBRepo_ReopenPreservesData(t *testing.T) {
 		t.Fatalf("close: %v", err)
 	}
 
-	repo2, err := OpenDuckDBRepo(dir, "test-model", 3)
+	repo2, err := OpenSQLiteRepo(dir, "test-model", 3)
 	if err != nil {
 		t.Fatalf("reopen: %v", err)
 	}

@@ -77,7 +77,7 @@ func main() {
 		Use:   "zolam",
 		Short: "Daemon-free semantic search over your personal files",
 		Long: "A CLI tool that indexes files in the current directory into a flat-file\n" +
-			"index (duckdb/jsonl) for semantic search via Claude Code/OpenCode, with no\n" +
+			"index (sqlite/jsonl) for semantic search via Claude Code/OpenCode, with no\n" +
 			"background service required.\n\n" +
 			"  zolam ingest <dirs...>   index files (creates the project, or refreshes it)\n" +
 			"  zolam ingest update      re-sync using the directories already in project.json\n" +
@@ -187,7 +187,7 @@ func newIngestCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "ingest <directories...>",
 		Short: "Index files into the project (creates it, or refreshes it)",
-		Long: "Index files into the current directory's flat-file project (duckdb by\n" +
+		Long: "Index files into the current directory's flat-file project (sqlite by\n" +
 			"default, or jsonl). Always name one or more subdirectories to scope\n" +
 			"what gets indexed (pass '.' to index the current directory itself,\n" +
 			"including dotfiles/dirs) — this applies on every run, not just the\n" +
@@ -218,7 +218,7 @@ func newIngestCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringSliceVar(&extensions, "extensions", nil, "File extensions to include (default: all supported types)")
-	cmd.Flags().StringVar(&backend, "backend", "", "Index backend: duckdb (default) or jsonl")
+	cmd.Flags().StringVar(&backend, "backend", "", "Index backend: sqlite (default) or jsonl")
 	cmd.Flags().BoolVar(&reset, "reset", false, "Delete the local index and re-ingest from scratch")
 	cmd.AddCommand(newIngestUpdateCmd())
 
@@ -262,7 +262,7 @@ func newQueryCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "query <text>",
 		Short: "Search the current directory's index",
-		Long:  "Semantic (default) or keyword (--keyword) search against the current directory's duckdb/jsonl index.",
+		Long:  "Semantic (default) or keyword (--keyword) search against the current directory's sqlite/jsonl index.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			proj, projectDir, err := zolam.LoadV3Project("")
@@ -489,7 +489,7 @@ func newChromaDBMcpCmd() *cobra.Command {
 		Use:   "mcp <provider>",
 		Short: "Register chroma-mcp server with an AI provider",
 		Long: "Register the chroma-mcp MCP server with an AI provider. Supported providers: claude, opencode.\n" +
-			"For the default duckdb/jsonl workflow, use 'zolam init claude|opencode' instead.",
+			"For the default sqlite/jsonl workflow, use 'zolam init claude|opencode' instead.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			provider := args[0]

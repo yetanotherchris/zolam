@@ -23,9 +23,9 @@ jobs:
       matrix:
         include:
           # Every leg builds natively on a matching-architecture runner —
-          # CGO is enabled (DuckDB, MuPDF, Tesseract, ONNX Runtime bindings
-          # all need a real C compiler), and cross-compiling CGO against
-          # system libraries like Tesseract is fragile, so cross-arch
+          # CGO is enabled (SQLite/sqlite-vec, MuPDF, Tesseract, ONNX Runtime
+          # bindings all need a real C compiler), and cross-compiling CGO
+          # against system libraries like Tesseract is fragile, so cross-arch
           # legs from earlier (linux-arm64 from an amd64 runner, for
           # instance) were switched to native arm64/amd64 runners instead.
           - os: ubuntu-latest
@@ -45,16 +45,18 @@ jobs:
             goarch: arm64
             suffix: darwin-arm64
           # windows-amd64 is marked experimental (continue-on-error
-          # below): go-fitz's bundled MuPDF static lib and DuckDB's
-          # Windows static libs pull in undefined UCRT/ntdll/Clang
-          # (__intrinsic_setjmpex) symbols that this workflow can't
-          # resolve yet, so this leg is expected to fail at the final
-          # link step. It's kept running (rather than removed) so we
-          # can see how far it gets as pieces of the toolchain (like
-          # the libtokenizers.a build below) get fixed. Until it fully
-          # passes, the windows-amd64 release binary is built manually
-          # and committed to artifacts/zolam-windows-amd64.exe — the
-          # release job picks it up from there if present.
+          # below): DuckDB used to be the blocker here (its Windows static
+          # libs pulled in undefined UCRT/emulated-TLS symbols this
+          # workflow couldn't resolve) but that's gone now that the vector
+          # index is SQLite + sqlite-vec, which compiles its own C source
+          # directly into the binary with no external static libs to link
+          # against. What's untested on Windows is go-fitz's bundled MuPDF
+          # static lib, which has its own history of undefined UCRT/Clang
+          # (__intrinsic_setjmpex) symbols. Left experimental until a real
+          # Windows run confirms the whole chain links cleanly. Until it
+          # fully passes, the windows-amd64 release binary is built
+          # manually and committed to artifacts/zolam-windows-amd64.exe —
+          # the release job picks it up from there if present.
           - os: windows-latest
             goos: windows
             goarch: amd64
@@ -105,12 +107,10 @@ jobs:
 
       # Tesseract/Leptonica dev libs only — the actual C compiler for
       # Windows now comes from Scoop's mingw package (below), not from
-      # MSYS2. Using UCRT64 rather than MINGW64 here matters: DuckDB's
-      # prebuilt Windows static libs reference UCRT entry points
-      # (__stdio_common_vswprintf etc.), and MINGW64 targets the
-      # legacy msvcrt.dll instead of UCRT — UCRT64 and Scoop's mingw
-      # (also a UCRT build, see build-libtokenizers.ps1) keep the
-      # whole toolchain on one consistent CRT.
+      # MSYS2. Using UCRT64 rather than MINGW64 here matters: MINGW64
+      # targets the legacy msvcrt.dll instead of UCRT — UCRT64 and
+      # Scoop's mingw (also a UCRT build, see build-libtokenizers.ps1)
+      # keep the whole toolchain on one consistent CRT.
       - name: Set up MSYS2 (Tesseract/Leptonica dev libs)
         if: runner.os == 'Windows'
         uses: msys2/setup-msys2@v2
@@ -185,19 +185,13 @@ jobs:
           # MSYS2 UCRT64 packages installed above live under the
           # ucrt64 prefix instead. Point CGO at it explicitly (same
           # fix as the macOS leg above, adapted for MSYS2's path).
-          #
           # MSYS2's leptonica package only ships an import library
-          # (libleptonica.dll.a) with no true static libleptonica.a.
-          # duckdb-go-bindings' own #cgo LDFLAGS includes a trailing
-          # --static, which puts ld into static-only library search
-          # for the whole link — so even though -lleptonica appears
-          # earlier on the command line, ld can't resolve it to the
-          # dynamic-only .dll.a and reports "cannot find -lleptonica".
-          # Force -Bdynamic back on ahead of every package's own
-          # LDFLAGS (CGO_LDFLAGS gets inserted before each cgo
-          # package's block) so leptonica/tesseract resolve via their
-          # import libraries regardless of what duckdb's flags do
-          # later in the command.
+          # (libleptonica.dll.a, no true static libleptonica.a), which
+          # ld resolves fine under the default dynamic-preferred search
+          # mode — this used to need forcing back on with -Wl,-Bdynamic
+          # because DuckDB's own #cgo LDFLAGS put ld into static-only
+          # mode first, but DuckDB is gone now (replaced by SQLite +
+          # sqlite-vec, which link cleanly with no such flag).
           #
           # -lntdll: the Rust tokenizers staticlib calls NT syscalls
           # (NtReadFile etc.) directly; rustc normally adds -lntdll
@@ -205,7 +199,7 @@ jobs:
           # actual final link here and has no idea that's needed.
           $env:CGO_CFLAGS = "-I$env:UCRT64_ROOT/include"
           $env:CGO_CXXFLAGS = "-I$env:UCRT64_ROOT/include"
-          $env:CGO_LDFLAGS = "-Wl,-Bdynamic -L$env:UCRT64_ROOT/lib -lntdll"
+          $env:CGO_LDFLAGS = "-L$env:UCRT64_ROOT/lib -lntdll"
           go build -ldflags="-X main.version=${{ steps.version.outputs.VERSION }} -s -w" -o zolam.exe ./cmd/zolam/
 
       - name: Build (Linux/macOS)
