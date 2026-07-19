@@ -50,9 +50,8 @@ type Project struct {
 }
 
 // DataDir returns the root zolam data directory, honouring ZOLAM_DATA_DIR.
-// It holds only downloaded embedding assets and the legacy ChromaDB/Docker
-// state; project data lives in the project's own directory (see
-// ProjectJSONPath), not here.
+// It holds only downloaded embedding assets; project data lives in the
+// project's own directory (see ProjectJSONPath), not here.
 func DataDir() (string, error) {
 	if d := os.Getenv("ZOLAM_DATA_DIR"); d != "" {
 		return d, nil

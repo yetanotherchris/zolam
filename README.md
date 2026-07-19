@@ -1,6 +1,6 @@
 # zolam
 
-Ingest your personal files (PDF, Markdown, Docx, Txt, code) into a local flat-file/SQLite/ChromaDb index for semantic search in Claude Code / OpenCode. 
+Ingest your personal files (PDF, Markdown, Docx, Txt, code) into a local flat-file/SQLite index for semantic search in Claude Code / OpenCode. 
 
 Zolam is a single Go binary that walks subdirectories, extracting and chunking text and creating embeddings natively (no separate runtime to install). It hashes files for incremental updates, and generates a human-readable `index.md` summary.  It stores what it needs in `.zolam` directory.
 
@@ -75,37 +75,10 @@ You can change the way the text and embeds are stored with `--backend` on first 
 |---|---|
 | `sqlite` (default) | General use — SQLite + [sqlite-vec](https://github.com/asg017/sqlite-vec) for vector search, SQL-queryable, supports keyword (`LIKE`) search alongside semantic search. |
 | `jsonl` | You want the index itself to be plain-text: greppable, diffable, easy to inspect or version. |
-| `chroma` (legacy) | You're already using the pre-v3 ChromaDB/Docker/MCP workflow and want to keep doing so. |
 
 ## Supported File Extensions
 
 `.md`, `.pdf`, `.docx`, `.txt`, `.py`, `.cs`, `.js`, `.ts`, `.json`, `.yml`, `.yaml`, `.csv`, `.html`, `.htm`
-
-## Deprecated: ChromaDB / Docker / MCP workflow
-
-Before v3, zolam ran a ChromaDB server in Docker and required registering
-a `chroma-mcp` MCP server with Claude Code/OpenCode. It's deprecated in
-favor of the daemon-free `sqlite`/`jsonl` workflow above — it requires
-Docker Desktop, a background container, and an extra MCP registration
-step that the v3 flow doesn't need. `zolam ingest`/`zolam query` no
-longer support this backend at all (`--backend chroma` is rejected);
-container management and MCP registration live under `zolam chromadb`
-for existing ChromaDB data only:
-
-```bash
-zolam chromadb start                                              # start the container
-zolam chromadb mcp claude                                         # register chroma-mcp
-zolam chromadb collections list                                   # list chroma collections
-```
-
-Ingesting new data into ChromaDB requires the standalone
-`docker-compose.yml` in this repo (bypassing the `zolam` CLI entirely):
-
-```bash
-docker compose --profile ingest run --rm \
-  -v /path/to/notes:/sources/notes \
-  ingest --directory /sources/notes
-```
 
 ## Architecture notes
 

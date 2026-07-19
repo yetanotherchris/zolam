@@ -176,7 +176,7 @@ func loadOrCreateProject(projectDir, root string, opts SyncOptions) (*domain.Pro
 			backend = domain.DefaultBackend
 		}
 		if backend != "sqlite" && backend != "jsonl" {
-			return nil, fmt.Errorf("unknown backend %q (expected sqlite or jsonl; the legacy chroma backend is managed separately via 'zolam chromadb')", backend)
+			return nil, fmt.Errorf("unknown backend %q (expected sqlite or jsonl)", backend)
 		}
 		extensions := opts.Extensions
 		if len(extensions) == 0 {
