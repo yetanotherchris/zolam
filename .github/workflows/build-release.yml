@@ -36,10 +36,20 @@ jobs:
             goos: darwin
             goarch: arm64
             suffix: darwin-arm64
-          - os: windows-latest
-            goos: windows
-            goarch: amd64
-            suffix: windows-amd64
+          # windows-amd64 is deliberately absent from this matrix: the
+          # MSYS2 MinGW toolchain currently can't link this binary —
+          # go-fitz's bundled MuPDF static lib was built against an
+          # older/different compiler (undefined reference to the
+          # Clang-only __intrinsic_setjmpex), and DuckDB's and the
+          # Rust tokenizers lib's Windows static libs pull in further
+          # undefined UCRT/ntdll symbols on top of that. None of these
+          # are fixable from this workflow alone. Until that's sorted
+          # out, the windows-amd64 release binary is built manually
+          # and committed to artifacts/zolam-windows-amd64.exe — the
+          # release job below picks it up from there if present. The
+          # dead-looking `if: runner.os == 'Windows'` steps further
+          # down are kept so CI Windows support can be revived later
+          # without reconstructing them from scratch.
 
     runs-on: ${{ matrix.os }}
 
@@ -212,6 +222,20 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
+
+      # windows-amd64 isn't built by the matrix above (see the comment
+      # there) — it's built manually and committed to this path so it
+      # rides along in the release. download-artifact merges into the
+      # same directory without touching files already there, so this
+      # just needs to exist before the release step runs; warn instead
+      # of failing so a missing Windows build doesn't block a release.
+      - name: Check for manually-built Windows binary
+        run: |
+          if [ -f artifacts/zolam-windows-amd64.exe ]; then
+            echo "Found artifacts/zolam-windows-amd64.exe — including it in the release."
+          else
+            echo "::warning::artifacts/zolam-windows-amd64.exe not found — this release will ship without a Windows binary."
+          fi
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
