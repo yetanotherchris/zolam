@@ -3,6 +3,7 @@ package zolam
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/csv"
 	"fmt"
 	"image/png"
 	"io"
@@ -56,6 +57,12 @@ func ExtractAndChunk(path, projectDir string) ([]PendingChunk, error) {
 			return nil, err
 		}
 		if err := writeTextSidecar(projectDir, path, text); err != nil {
+			return nil, err
+		}
+		return chunksNoPage(text), nil
+	case ".csv":
+		text, err := extractCSV(path)
+		if err != nil {
 			return nil, err
 		}
 		return chunksNoPage(text), nil
@@ -182,6 +189,58 @@ func extractDocx(path string) (string, error) {
 		}
 	}
 	return strings.Join(parts, "\n\n"), nil
+}
+
+// extractCSV renders each data row as "header: value | header: value" pairs
+// (falling back to "colN" for a missing/blank header), one row per
+// blank-line-separated paragraph, so ChunkText packs whole rows into a chunk
+// instead of hard-splitting through the middle of a row.
+func extractCSV(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	r := csv.NewReader(f)
+	r.FieldsPerRecord = -1 // tolerate ragged rows rather than failing the whole file
+	r.LazyQuotes = true
+
+	header, err := r.Read()
+	if err == io.EOF {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("reading csv header %s: %w", path, err)
+	}
+
+	var rows []string
+	for {
+		record, err := r.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return "", fmt.Errorf("reading csv %s: %w", path, err)
+		}
+
+		var pairs []string
+		for i, value := range record {
+			value = strings.TrimSpace(value)
+			if value == "" {
+				continue
+			}
+			name := fmt.Sprintf("col%d", i+1)
+			if i < len(header) && strings.TrimSpace(header[i]) != "" {
+				name = strings.TrimSpace(header[i])
+			}
+			pairs = append(pairs, fmt.Sprintf("%s: %s", name, value))
+		}
+		if len(pairs) > 0 {
+			rows = append(rows, strings.Join(pairs, " | "))
+		}
+	}
+	return strings.Join(rows, "\n\n"), nil
 }
 
 var (

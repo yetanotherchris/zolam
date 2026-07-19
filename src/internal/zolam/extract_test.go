@@ -29,6 +29,43 @@ func TestExtractAndChunk_PlainText(t *testing.T) {
 	}
 }
 
+func TestExtractAndChunk_CSV(t *testing.T) {
+	dir := t.TempDir()
+	projectDir := filepath.Join(dir, ".zolam")
+	path := filepath.Join(dir, "contacts.csv")
+	csvData := "name,email,notes\nAda Lovelace,ada@example.com,first programmer\nAlan Turing,alan@example.com,\n"
+	if err := os.WriteFile(path, []byte(csvData), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	chunks, err := ExtractAndChunk(path, projectDir)
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	if len(chunks) != 1 {
+		t.Fatalf("expected a single chunk, got %d: %+v", len(chunks), chunks)
+	}
+	text := chunks[0].Text
+	if !strings.Contains(text, "name: Ada Lovelace | email: ada@example.com | notes: first programmer") {
+		t.Errorf("expected first row rendered with headers, got: %q", text)
+	}
+	if !strings.Contains(text, "name: Alan Turing | email: alan@example.com") {
+		t.Errorf("expected second row rendered with headers, got: %q", text)
+	}
+	if strings.Contains(text, "Alan Turing | notes:") {
+		t.Errorf("expected blank notes field to be dropped, got: %q", text)
+	}
+	if chunks[0].Page != 0 {
+		t.Errorf("expected no page for csv, got %d", chunks[0].Page)
+	}
+
+	// CSV files are already plain text; no sidecar should be written.
+	sidecar := sidecarPath(projectDir, path)
+	if _, err := os.Stat(sidecar); !os.IsNotExist(err) {
+		t.Errorf("expected no sidecar for csv, got: %v", err)
+	}
+}
+
 func TestExtractAndChunk_DOCX(t *testing.T) {
 	src := "/tmp/sample.docx"
 	if _, err := os.Stat(src); err != nil {
