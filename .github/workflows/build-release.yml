@@ -36,21 +36,40 @@ jobs:
             goos: darwin
             goarch: arm64
             suffix: darwin-arm64
+          # windows-amd64 is marked experimental (continue-on-error
+          # below): go-fitz's bundled MuPDF static lib and DuckDB's
+          # Windows static libs pull in undefined UCRT/ntdll/Clang
+          # (__intrinsic_setjmpex) symbols that this workflow can't
+          # resolve yet, so this leg is expected to fail at the final
+          # link step. It's kept running (rather than removed) so we
+          # can see how far it gets as pieces of the toolchain (like
+          # the libtokenizers.a build below) get fixed. Until it fully
+          # passes, the windows-amd64 release binary is built manually
+          # and committed to artifacts/zolam-windows-amd64.exe — the
+          # release job picks it up from there if present.
           - os: windows-latest
             goos: windows
             goarch: amd64
             suffix: windows-amd64
+            experimental: true
 
     runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.experimental == true }}
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
-          go-version: "1.24"
+          # Read the required version from go.mod (currently 1.25.0)
+          # instead of pinning it here, so the two can't drift out of
+          # sync — setup-go@v6 sets GOTOOLCHAIN=local when go-version
+          # is pinned explicitly, which blocks Go's usual toolchain
+          # auto-download and turns a stale pin into a hard failure.
+          go-version-file: src/go.mod
+          cache-dependency-path: src/go.sum
 
       - name: Install Tesseract/Leptonica dev libraries (Linux)
         if: runner.os == 'Linux'
@@ -60,6 +79,12 @@ jobs:
 
       - name: Install Tesseract/Leptonica dev libraries (macOS)
         if: runner.os == 'macOS'
+        env:
+          # The macOS runner image ships with taps (e.g. aws/tap) that
+          # Homebrew's tap-trust model doesn't trust by default; brew
+          # warns about them on every invocation even though we only
+          # install from homebrew-core. See https://docs.brew.sh/Tap-Trust
+          HOMEBREW_NO_REQUIRE_TAP_TRUST: "1"
         run: |
           brew install tesseract pkg-config
           # gosseract's cgo bridge has no #cgo CFLAGS/LDFLAGS of its own and
@@ -70,18 +95,35 @@ jobs:
           echo "CGO_CXXFLAGS=-I$(brew --prefix)/include" >> "$GITHUB_ENV"
           echo "CGO_LDFLAGS=-L$(brew --prefix)/lib" >> "$GITHUB_ENV"
 
-      - name: Set up MSYS2 (Windows CGO toolchain + Tesseract/Leptonica)
+      # Tesseract/Leptonica dev libs only — the actual C compiler for
+      # Windows now comes from Scoop's mingw package (below), not from
+      # MSYS2. Using UCRT64 rather than MINGW64 here matters: DuckDB's
+      # prebuilt Windows static libs reference UCRT entry points
+      # (__stdio_common_vswprintf etc.), and MINGW64 targets the
+      # legacy msvcrt.dll instead of UCRT — UCRT64 and Scoop's mingw
+      # (also a UCRT build, see build-libtokenizers.ps1) keep the
+      # whole toolchain on one consistent CRT.
+      - name: Set up MSYS2 (Tesseract/Leptonica dev libs)
         if: runner.os == 'Windows'
         uses: msys2/setup-msys2@v2
         with:
-          msystem: MINGW64
+          msystem: UCRT64
           install: >-
-            git
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-rust
-            mingw-w64-x86_64-tesseract-ocr
-            mingw-w64-x86_64-leptonica
-            mingw-w64-x86_64-pkg-config
+            mingw-w64-ucrt-x86_64-tesseract-ocr
+            mingw-w64-ucrt-x86_64-leptonica
+            mingw-w64-ucrt-x86_64-pkg-config
+
+      # The MSYS2 install path varies by runner (seen at both C:\msys64
+      # and D:\a\_temp\msys64), so resolve it once here via cygpath
+      # rather than hardcoding it in the pwsh build step below.
+      - name: Resolve MSYS2 UCRT64 path
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: echo "UCRT64_ROOT=$(cygpath -m /ucrt64)" >> "$GITHUB_ENV"
+
+      - name: Install Scoop
+        if: runner.os == 'Windows'
+        uses: MinoruSekine/setup-scoop@v5
 
       - name: Determine version
         id: version
@@ -98,35 +140,65 @@ jobs:
       # daulet/tokenizers only publishes prebuilt libtokenizers.a for
       # linux/darwin (see its .github/workflows/release.yml) — there's no
       # windows-amd64 release asset, so fetchnative's download 404s. Build
-      # the static lib ourselves from the same tagged source with the
-      # MSYS2 MinGW toolchain (matching the GNU ABI the Go bindings expect
-      # on windows: `#cgo windows LDFLAGS: -ltokenizers -lm -lstdc++
-      # -lws2_32 -luserenv`) and drop it where fetchnative would have
-      # written it; fetchnative then sees the file and skips its download.
+      # the static lib ourselves via build-libtokenizers.ps1 (repo root),
+      # which installs Rust through Scoop (GNU host target) and a plain
+      # MinGW-w64 GCC through Scoop's "mingw" package — no MSYS2 involved
+      # for this piece, since that's what was actually breaking here
+      # (dlltool.exe not found; MSYS2's PATH wasn't reaching the build
+      # reliably). fetchnative below sees the resulting file and skips its
+      # own download.
       - name: Build libtokenizers.a from source (Windows)
         if: runner.os == 'Windows'
-        shell: msys2 {0}
-        working-directory: src
+        shell: pwsh
         run: |
-          set -e
-          TOK_VERSION=$(awk '/daulet\/tokenizers/ {print $2}' go.mod)
-          echo "Building daulet/tokenizers $TOK_VERSION for windows-amd64"
-          git clone --depth 1 --branch "$TOK_VERSION" https://github.com/daulet/tokenizers.git /tmp/tokenizers-src
-          cargo build --release --manifest-path /tmp/tokenizers-src/Cargo.toml -p tokenizers-ffi
-          mkdir -p native/tokenizers
-          cp /tmp/tokenizers-src/target/release/libtokenizers_ffi.a native/tokenizers/libtokenizers.a
+          $tokVersion = (Select-String -Path src\go.mod -Pattern 'daulet/tokenizers\s+(\S+)').Matches[0].Groups[1].Value
+          .\build-libtokenizers.ps1 -TokenizersVersion $tokVersion -OutputPath src\native\tokenizers\libtokenizers.a
+
+          # Scoop's own PATH update is registry-level (persistent) but
+          # this job's later steps are separate processes that won't
+          # pick that up automatically — export it via GITHUB_PATH so
+          # the "Build (Windows)" step below can find gcc/g++.
+          "$HOME\scoop\apps\mingw\current\bin" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+          "$HOME\scoop\shims" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
 
       - name: Fetch native tokenizers library
         working-directory: src
         run: go run ./tools/fetchnative
 
-      - name: Build (Windows, via MSYS2 MinGW shell)
+      - name: Build (Windows)
         if: runner.os == 'Windows'
-        shell: msys2 {0}
+        shell: pwsh
         working-directory: src
         env:
           CGO_ENABLED: "1"
-        run: go build -ldflags="-X main.version=${{ steps.version.outputs.VERSION }} -s -w" -o zolam.exe ./cmd/zolam/
+        run: |
+          # gosseract's cgo bridge hardcodes -L/usr/local/lib for its
+          # tesseract/leptonica LDFLAGS, which doesn't exist here — the
+          # MSYS2 UCRT64 packages installed above live under the
+          # ucrt64 prefix instead. Point CGO at it explicitly (same
+          # fix as the macOS leg above, adapted for MSYS2's path).
+          #
+          # MSYS2's leptonica package only ships an import library
+          # (libleptonica.dll.a) with no true static libleptonica.a.
+          # duckdb-go-bindings' own #cgo LDFLAGS includes a trailing
+          # --static, which puts ld into static-only library search
+          # for the whole link — so even though -lleptonica appears
+          # earlier on the command line, ld can't resolve it to the
+          # dynamic-only .dll.a and reports "cannot find -lleptonica".
+          # Force -Bdynamic back on ahead of every package's own
+          # LDFLAGS (CGO_LDFLAGS gets inserted before each cgo
+          # package's block) so leptonica/tesseract resolve via their
+          # import libraries regardless of what duckdb's flags do
+          # later in the command.
+          #
+          # -lntdll: the Rust tokenizers staticlib calls NT syscalls
+          # (NtReadFile etc.) directly; rustc normally adds -lntdll
+          # automatically when linking, but Go's linker does the
+          # actual final link here and has no idea that's needed.
+          $env:CGO_CFLAGS = "-I$env:UCRT64_ROOT/include"
+          $env:CGO_CXXFLAGS = "-I$env:UCRT64_ROOT/include"
+          $env:CGO_LDFLAGS = "-Wl,-Bdynamic -L$env:UCRT64_ROOT/lib -lntdll"
+          go build -ldflags="-X main.version=${{ steps.version.outputs.VERSION }} -s -w" -o zolam.exe ./cmd/zolam/
 
       - name: Build (Linux/macOS)
         if: runner.os != 'Windows'
@@ -144,7 +216,7 @@ jobs:
         run: mv src/zolam.exe zolam-${{ matrix.suffix }}.exe
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: zolam-${{ matrix.suffix }}
           path: zolam-${{ matrix.suffix }}*
@@ -156,7 +228,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -168,10 +240,24 @@ jobs:
           echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           path: artifacts
           merge-multiple: true
+
+      # windows-amd64 isn't built by the matrix above (see the comment
+      # there) — it's built manually and committed to this path so it
+      # rides along in the release. download-artifact merges into the
+      # same directory without touching files already there, so this
+      # just needs to exist before the release step runs; warn instead
+      # of failing so a missing Windows build doesn't block a release.
+      - name: Check for manually-built Windows binary
+        run: |
+          if [ -f artifacts/zolam-windows-amd64.exe ]; then
+            echo "Found artifacts/zolam-windows-amd64.exe — including it in the release."
+          else
+            echo "::warning::artifacts/zolam-windows-amd64.exe not found — this release will ship without a Windows binary."
+          fi
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
