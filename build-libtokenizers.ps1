@@ -6,13 +6,14 @@
 .DESCRIPTION
   daulet/tokenizers only publishes prebuilt libtokenizers.a for linux/darwin,
   not windows-amd64, so zolam's build fetches it from source on Windows. This
-  script does that build standalone, matching CI's approach (see
-  .github/workflows/build-release.yml's "Build libtokenizers.a from source
-  (Windows)" step):
+  script does that build standalone:
     - Rust: installed via Scoop, forced to the GNU host target, since Go's cgo
       linking in zolam expects the GNU/MinGW ABI, not MSVC.
-    - GCC: installed via MSYS2/pacman — cargo needs a matching C linker for the
-      GNU target.
+    - GCC: installed via Scoop's standalone "mingw" package (a plain
+      MinGW-w64 GCC build) — no MSYS2 needed. A real C compiler is required
+      here, not just Rust's own linker: one of tokenizers' dependencies
+      (onig_sys, wrapping Oniguruma) has a build.rs that compiles C source,
+      and the GNU-target Rust toolchain needs a matching gcc to link.
 
   Assumes Git is already available on PATH (this script won't install it).
 
@@ -66,29 +67,21 @@ Write-Step "Forcing Rust to the GNU host target (zolam's cgo linking expects Min
 rustup toolchain install stable-x86_64-pc-windows-gnu
 rustup default stable-x86_64-pc-windows-gnu
 
-Write-Step "Checking for MSYS2 (needed for a matching GCC to link the Rust staticlib)"
-$msys2Bash = "C:\msys64\usr\bin\bash.exe"
-if (-not (Test-Path $msys2Bash)) {
-    if (-not (scoop list msys2 2>$null | Select-String "msys2")) {
-        scoop bucket list | Select-String -Quiet '^extras$' | Out-Null
-        if (-not $?) { scoop bucket add extras }
-        scoop install extras/msys2
-    }
-    $msys2Bash = (Get-Command msys2 -ErrorAction SilentlyContinue)?.Source
-    if (-not $msys2Bash) {
-        throw "Could not locate msys2 after installing via Scoop. Install MSYS2 manually from https://www.msys2.org and re-run."
-    }
+Write-Step "Installing GCC via Scoop (mingw package)"
+scoop bucket list | Select-String -Quiet '^main$' | Out-Null
+if (-not $?) { scoop bucket add main }
+if (-not (scoop list mingw 2>$null | Select-String "mingw")) {
+    scoop install mingw
+} else {
+    Write-Host "  mingw already installed, skipping"
 }
-$msys2Root = Split-Path (Split-Path (Split-Path $msys2Bash))
-$mingw64 = Join-Path $msys2Root "mingw64"
 
-Write-Step "Installing GCC via pacman (matches CI's toolchain)"
-& $msys2Bash -lc "pacman -Syu --noconfirm"
-& $msys2Bash -lc "pacman -S --noconfirm --needed mingw-w64-x86_64-gcc"
-
-# Put MSYS2's mingw64 toolchain on PATH for this session so `gcc`/`g++`
-# resolve to it for the cargo build below.
-$env:Path = "$mingw64\bin;$env:Path"
+if (-not (Get-Command gcc -ErrorAction SilentlyContinue)) {
+    throw "gcc still not on PATH after installing Scoop's mingw package. Open a new shell (PATH changes may need a fresh session) and re-run."
+}
+if (-not (Get-Command dlltool -ErrorAction SilentlyContinue)) {
+    throw "dlltool still not on PATH after installing Scoop's mingw package. Open a new shell (PATH changes may need a fresh session) and re-run."
+}
 
 Write-Step "Cloning daulet/tokenizers ($TokenizersVersion)"
 $tokSrc = Join-Path $env:TEMP "tokenizers-src"
