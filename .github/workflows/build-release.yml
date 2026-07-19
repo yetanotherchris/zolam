@@ -81,11 +81,11 @@ jobs:
           go-version-file: src/go.mod
           cache-dependency-path: src/go.sum
 
-      - name: Install Tesseract/Leptonica dev libraries (Linux)
+      - name: Install Tesseract/Leptonica/SQLite3 dev libraries (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libtesseract-dev libleptonica-dev pkg-config
+          sudo apt-get install -y libtesseract-dev libleptonica-dev libsqlite3-dev pkg-config
 
       - name: Install Tesseract/Leptonica dev libraries (macOS)
         if: runner.os == 'macOS'
@@ -105,13 +105,21 @@ jobs:
           echo "CGO_CXXFLAGS=-I$(brew --prefix)/include" >> "$GITHUB_ENV"
           echo "CGO_LDFLAGS=-L$(brew --prefix)/lib" >> "$GITHUB_ENV"
 
-      # Tesseract/Leptonica dev libs only — the actual C compiler for
-      # Windows now comes from Scoop's mingw package (below), not from
-      # MSYS2. Using UCRT64 rather than MINGW64 here matters: MINGW64
+      # Tesseract/Leptonica/SQLite3 dev libs/headers only — the actual C
+      # compiler for Windows comes from Scoop's mingw package (below), not
+      # from MSYS2. Using UCRT64 rather than MINGW64 here matters: MINGW64
       # targets the legacy msvcrt.dll instead of UCRT — UCRT64 and
       # Scoop's mingw (also a UCRT build, see build-libtokenizers.ps1)
       # keep the whole toolchain on one consistent CRT.
-      - name: Set up MSYS2 (Tesseract/Leptonica dev libs)
+      #
+      # sqlite3 is here for its header only: sqlite-vec.c #includes
+      # "sqlite3.h" — installed explicitly via apt on Linux above, and
+      # present in macOS's SDK by default; Windows has no such default,
+      # so it's installed the same way as Tesseract/Leptonica.
+      # mattn/go-sqlite3 vendors its own amalgamation but names it
+      # sqlite3-binding.h specifically to avoid this exact collision, so
+      # it can't stand in for the real header sqlite-vec.c wants.
+      - name: Set up MSYS2 (Tesseract/Leptonica/SQLite3 dev libs)
         if: runner.os == 'Windows'
         uses: msys2/setup-msys2@v2
         with:
@@ -119,6 +127,7 @@ jobs:
           install: >-
             mingw-w64-ucrt-x86_64-tesseract-ocr
             mingw-w64-ucrt-x86_64-leptonica
+            mingw-w64-ucrt-x86_64-sqlite3
             mingw-w64-ucrt-x86_64-pkg-config
 
       # The MSYS2 install path varies by runner (seen at both C:\msys64
