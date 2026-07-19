@@ -28,7 +28,7 @@ func prepareCachedEmbeddingAssets(t *testing.T) {
 	if err := os.MkdirAll(modelsDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	ortDir := filepath.Join(dataDir, "onnxruntime")
+	ortDir := filepath.Join(dataDir, "onnxruntime", onnxRuntimeVersion)
 	if err := os.MkdirAll(ortDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
