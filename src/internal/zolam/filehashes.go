@@ -8,7 +8,7 @@ import (
 )
 
 // fileHashesName is the flat JSON file recording path -> sha256 for
-// a v3 project's incremental-update state, stored directly in the
+// a project's incremental-update state, stored directly in the
 // project's own directory.
 const fileHashesName = "file-hashes.json"
 

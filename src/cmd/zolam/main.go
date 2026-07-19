@@ -200,7 +200,7 @@ func newIngestCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dirs, exts := splitArgsFromExtensions(args, extensions)
 
-			result, proj, err := zolam.RunV3Sync(zolam.V3SyncOptions{
+			result, proj, err := zolam.RunSync(zolam.SyncOptions{
 				Dirs:       dirs,
 				Extensions: exts,
 				Backend:    backend,
@@ -237,7 +237,7 @@ func newIngestUpdateCmd() *cobra.Command {
 			"first-time ingest still requires 'zolam ingest <dir>'.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			result, proj, err := zolam.RunV3Update("", reset, func(line string) {
+			result, proj, err := zolam.RunUpdate("", reset, func(line string) {
 				fmt.Println(line)
 			})
 			if err != nil {
@@ -265,7 +265,7 @@ func newQueryCmd() *cobra.Command {
 		Long:  "Semantic (default) or keyword (--keyword) search against the current directory's sqlite/jsonl index.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			proj, projectDir, err := zolam.LoadV3Project("")
+			proj, projectDir, err := zolam.LoadProject("")
 			if err != nil {
 				return err
 			}

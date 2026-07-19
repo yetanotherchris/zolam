@@ -62,7 +62,7 @@ func openBackend(projectDir, backendName, model string, dims int) (indexBackend,
 // its entire duration: only one process may have the index open at a
 // time, whether that's this one or a concurrent 'zolam query'.
 func RunIngest(project *domain.Project, projectDir string, files, removed []string, outputFn func(string)) (*IngestSummary, error) {
-	// A brand new project's directory may not exist yet: RunV3Sync only
+	// A brand new project's directory may not exist yet: RunSync only
 	// persists project.json after ingest succeeds, matching the old
 	// pipeline's behaviour of creating the directory itself on first use.
 	if err := os.MkdirAll(projectDir, 0o755); err != nil {
