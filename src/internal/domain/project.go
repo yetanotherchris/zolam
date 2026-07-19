@@ -1,5 +1,5 @@
-// Package domain holds the v3 flat-file project types shared between the
-// CLI orchestration code and the embedded Python pipeline.
+// Package domain holds the flat-file project types shared between the CLI
+// orchestration code and the native ingest/query pipeline.
 package domain
 
 import (
@@ -50,9 +50,8 @@ type Project struct {
 }
 
 // DataDir returns the root zolam data directory, honouring ZOLAM_DATA_DIR.
-// It holds only the embedded Python script cache and the legacy
-// ChromaDB/Docker state; v3 project data lives in the project's own
-// directory (see ProjectJSONPath), not here.
+// It holds only downloaded embedding assets; project data lives in the
+// project's own directory (see ProjectJSONPath), not here.
 func DataDir() (string, error) {
 	if d := os.Getenv("ZOLAM_DATA_DIR"); d != "" {
 		return d, nil
@@ -65,7 +64,7 @@ func DataDir() (string, error) {
 }
 
 // LocalProjectDir returns the hidden .zolam/ subdirectory of root (normally
-// the current working directory) where a v3 project's files live, replacing
+// the current working directory) where a project's files live, replacing
 // the old global ~/.zolam/<name> registry: a project is just "the directory
 // with a .zolam/ folder in it".
 func LocalProjectDir(root string) string {

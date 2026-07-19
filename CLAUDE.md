@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Zolam is a semantic search tool that ingests personal files (markdown, PDF, DOCX, code) into a per-directory SQLite (or JSONL) index for semantic search via Claude. It's a single Go binary — no Docker, Python, or Node runtime required to ingest or query. (A legacy ChromaDB/Docker/MCP workflow still exists under `zolam chromadb` for pre-v3 data; see README's "Deprecated" section.)
+Zolam is a semantic search tool that ingests personal files (markdown, PDF, DOCX, code) into a per-directory SQLite (or JSONL) index for semantic search via Claude. It's a single Go binary — no Docker, Python, or Node runtime required to ingest or query.
 
 ## Tech Stack
 
@@ -48,7 +48,6 @@ src/
 ├── cmd/zolam/main.go        # Entry point, CLI subcommands
 ├── internal/
 │   ├── domain/                 # Config, project.json types
-│   ├── docker/                 # Docker/compose client (legacy ChromaDB path only)
 │   └── zolam/                  # Ingest/query pipeline: extraction, chunking, embedding,
 │                                # SQLite/JSONL repos, worker pool, file hashing, lock file
 ├── native/tokenizers/        # Fetched by tools/fetchnative, gitignored

@@ -17,8 +17,8 @@ type UpdateResult struct {
 	Unchanged int
 }
 
-// V3SyncOptions controls a flat-file (sqlite/jsonl) ingest run.
-type V3SyncOptions struct {
+// SyncOptions controls a flat-file (sqlite/jsonl) ingest run.
+type SyncOptions struct {
 	// Root is the directory whose .zolam/ subdirectory holds the project's
 	// files. Empty means the current working directory.
 	Root string
@@ -49,13 +49,12 @@ func ResolveRoot(dir string) (string, error) {
 	return filepath.Abs(dir)
 }
 
-// RunV3Sync creates or loads a flat-file project in Root's .zolam/
+// RunSync creates or loads a flat-file project in Root's .zolam/
 // subdirectory, diffs the current file set on disk against
-// file-hashes.json, invokes the embedded Python pipeline for
-// added/changed/removed files, and regenerates index.md. `zolam ingest`
-// calls this for every run (both first-time ingest and incremental
-// re-sync).
-func RunV3Sync(opts V3SyncOptions, outputFn func(string)) (*UpdateResult, *domain.Project, error) {
+// file-hashes.json, extracts/chunks/embeds added/changed files and removes
+// deleted ones, and regenerates index.md. `zolam ingest` calls this for
+// every run (both first-time ingest and incremental re-sync).
+func RunSync(opts SyncOptions, outputFn func(string)) (*UpdateResult, *domain.Project, error) {
 	if len(opts.Dirs) == 0 {
 		return nil, nil, fmt.Errorf("zolam ingest requires at least one directory, e.g. 'zolam ingest ./notes' (use 'zolam ingest .' to index the current directory itself)")
 	}
@@ -139,13 +138,13 @@ func RunV3Sync(opts V3SyncOptions, outputFn func(string)) (*UpdateResult, *domai
 	return result, project, nil
 }
 
-// RunV3Update re-syncs an existing project using the source_dirs already
+// RunUpdate re-syncs an existing project using the source_dirs already
 // recorded in its project.json, so callers (the 'zolam ingest update'
-// subcommand) don't need to name a directory again. Unlike RunV3Sync, it
+// subcommand) don't need to name a directory again. Unlike RunSync, it
 // errors if no project exists yet rather than creating one — first-time
 // ingest still requires 'zolam ingest <dir>' to establish source_dirs
 // explicitly.
-func RunV3Update(root string, reset bool, outputFn func(string)) (*UpdateResult, *domain.Project, error) {
+func RunUpdate(root string, reset bool, outputFn func(string)) (*UpdateResult, *domain.Project, error) {
 	resolvedRoot, err := ResolveRoot(root)
 	if err != nil {
 		return nil, nil, err
@@ -158,14 +157,14 @@ func RunV3Update(root string, reset bool, outputFn func(string)) (*UpdateResult,
 	if err != nil {
 		return nil, nil, fmt.Errorf("loading project in %s: %w", projectDir, err)
 	}
-	return RunV3Sync(V3SyncOptions{
+	return RunSync(SyncOptions{
 		Root:  root,
 		Dirs:  project.SourceDirs,
 		Reset: reset,
 	}, outputFn)
 }
 
-func loadOrCreateProject(projectDir, root string, opts V3SyncOptions) (*domain.Project, error) {
+func loadOrCreateProject(projectDir, root string, opts SyncOptions) (*domain.Project, error) {
 	absDirs, err := absPaths(opts.Dirs)
 	if err != nil {
 		return nil, err
@@ -177,7 +176,7 @@ func loadOrCreateProject(projectDir, root string, opts V3SyncOptions) (*domain.P
 			backend = domain.DefaultBackend
 		}
 		if backend != "sqlite" && backend != "jsonl" {
-			return nil, fmt.Errorf("unknown backend %q (expected sqlite or jsonl; the legacy chroma backend is managed separately via 'zolam chromadb')", backend)
+			return nil, fmt.Errorf("unknown backend %q (expected sqlite or jsonl)", backend)
 		}
 		extensions := opts.Extensions
 		if len(extensions) == 0 {
@@ -193,18 +192,18 @@ func loadOrCreateProject(projectDir, root string, opts V3SyncOptions) (*domain.P
 	if opts.Backend != "" && opts.Backend != project.Backend {
 		return nil, fmt.Errorf("this project was created with backend %q; use --reset to switch to %q", project.Backend, opts.Backend)
 	}
-	project.SourceDirs = absDirs
+	project.SourceDirs = mergeDirs(project.SourceDirs, absDirs)
 	if len(opts.Extensions) > 0 {
 		project.Extensions = opts.Extensions
 	}
 	return project, nil
 }
 
-// LoadV3Project loads an existing flat-file project from dir's .zolam/
+// LoadProject loads an existing flat-file project from dir's .zolam/
 // subdirectory (dir defaulting to the current working directory),
 // returning a clear, actionable error if it doesn't exist or was indexed
 // with a now-unsupported embedding model.
-func LoadV3Project(dir string) (*domain.Project, string, error) {
+func LoadProject(dir string) (*domain.Project, string, error) {
 	root, err := ResolveRoot(dir)
 	if err != nil {
 		return nil, "", err
@@ -233,4 +232,25 @@ func absPaths(dirs []string) ([]string, error) {
 		out = append(out, abs)
 	}
 	return out, nil
+}
+
+// mergeDirs unions newDirs into existing, preserving existing's order and
+// appending any newDirs not already present. A named source directory is
+// additive across ingest runs — dropping one (and the files under it) is
+// only supposed to happen via --reset, not by simply omitting it from a
+// later 'zolam ingest <dir>' call.
+func mergeDirs(existing, newDirs []string) []string {
+	seen := make(map[string]bool, len(existing))
+	out := make([]string, len(existing))
+	copy(out, existing)
+	for _, d := range existing {
+		seen[d] = true
+	}
+	for _, d := range newDirs {
+		if !seen[d] {
+			seen[d] = true
+			out = append(out, d)
+		}
+	}
+	return out
 }
