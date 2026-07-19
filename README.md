@@ -118,8 +118,11 @@ and [`asg017/sqlite-vec-go-bindings`](https://github.com/asg017/sqlite-vec-go-bi
 no separate library to install), [`gen2brain/go-fitz`](https://github.com/gen2brain/go-fitz) (MuPDF,
 for PDF extraction/rendering — statically bundled, no extra install needed),
 and [`otiai10/gosseract`](https://github.com/otiai10/gosseract) (Tesseract,
-for OCR — needs Tesseract installed on the host, same as the "Optional:
-Tesseract" step above). Embeddings run via [`yalue/onnxruntime_go`](https://github.com/yalue/onnxruntime_go)
+for OCR — needs Tesseract's language data installed on the host, same as
+the "Optional: Tesseract" step above; on Windows the Tesseract/Leptonica
+runtime DLLs themselves ship bundled alongside `zolam.exe`, since Windows
+loads them eagerly at process startup — see the release zip). Embeddings
+run via [`yalue/onnxruntime_go`](https://github.com/yalue/onnxruntime_go)
 and [`daulet/tokenizers`](https://github.com/daulet/tokenizers) (the real
 HuggingFace tokenizers library, for byte-exact compatibility with the
 `BAAI/bge-small-en-v1.5` model this project uses); the onnxruntime shared
@@ -128,8 +131,13 @@ same as before.
 
 Released binaries are unaffected by any of this — CGO only matters at
 *build* time (it needs a real C compiler present), not at runtime, so
-prebuilt `zolam` downloads need nothing extra installed beyond Tesseract for
-OCR.
+prebuilt `zolam` downloads need nothing extra installed beyond Tesseract's
+language data for OCR. (On Windows this depends on downloading the
+`zolam-windows-amd64.zip` release asset rather than a bare `.exe` — the zip
+bundles the Tesseract/Leptonica runtime DLLs `zolam.exe` needs just to
+start up. If you're hitting a `libleptonica-6.dll was not found` error,
+you have an older bare-`.exe` download; re-download via `scoop install
+zolam` or the zip from the latest release.)
 
 ## Building from Source
 

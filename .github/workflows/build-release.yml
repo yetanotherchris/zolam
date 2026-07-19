@@ -222,13 +222,48 @@ jobs:
           CGO_ENABLED: "1"
         run: go build -ldflags="-X main.version=${{ steps.version.outputs.VERSION }} -s -w" -o zolam ./cmd/zolam/
 
+      # zolam.exe dynamically links against Tesseract/Leptonica and their
+      # transitive MSYS2 UCRT64 dependencies (see the Build (Windows) step
+      # above). Unlike ELF's lazy .so resolution, Windows loads every DLL
+      # in the import table eagerly at process startup, so without these
+      # sitting next to the exe, zolam.exe refuses to even launch —
+      # "libleptonica-6.dll was not found" — regardless of whether OCR is
+      # ever used. Walk the dependency graph (via MSYS2's ldd) and copy
+      # every non-system DLL alongside the exe so the release is
+      # self-contained: Windows always searches the executable's own
+      # directory before PATH.
+      - name: Bundle Windows runtime DLLs
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        working-directory: src
+        run: |
+          set -euo pipefail
+          rm -rf dist
+          mkdir dist
+          cp zolam.exe dist/
+          queue=("zolam.exe")
+          while [ "${#queue[@]}" -gt 0 ]; do
+            current="${queue[0]}"
+            queue=("${queue[@]:1}")
+            for dep in $(ldd "dist/$current" | awk '{print $1}'); do
+              if [ -f "/ucrt64/bin/$dep" ] && [ ! -f "dist/$dep" ]; then
+                cp "/ucrt64/bin/$dep" "dist/$dep"
+                queue+=("$dep")
+              fi
+            done
+          done
+          echo "Bundled alongside zolam.exe:"
+          ls dist/
+
+      - name: Package Windows build
+        if: runner.os == 'Windows'
+        shell: pwsh
+        working-directory: src
+        run: Compress-Archive -Path dist\* -DestinationPath ..\zolam-${{ matrix.suffix }}.zip -Force
+
       - name: Rename binary (unix)
         if: matrix.goos != 'windows'
         run: mv src/zolam zolam-${{ matrix.suffix }}
-
-      - name: Rename binary (windows)
-        if: matrix.goos == 'windows'
-        run: mv src/zolam.exe zolam-${{ matrix.suffix }}.exe
 
       - name: Upload artifact
         uses: actions/upload-artifact@v6
@@ -260,18 +295,21 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      # windows-amd64 isn't built by the matrix above (see the comment
-      # there) — it's built manually and committed to this path so it
-      # rides along in the release. download-artifact merges into the
-      # same directory without touching files already there, so this
-      # just needs to exist before the release step runs; warn instead
-      # of failing so a missing Windows build doesn't block a release.
+      # windows-amd64 isn't reliably built by the matrix above (see the
+      # comment there) — a manually-built zip can be committed to this
+      # path so it rides along in the release instead. download-artifact
+      # merges into the same directory without touching files already
+      # there, so this just needs to exist before the release step runs;
+      # warn instead of failing so a missing Windows build doesn't block
+      # a release. It's a zip (not a bare .exe) because zolam.exe needs
+      # its Tesseract/Leptonica runtime DLLs bundled alongside it — see
+      # the "Bundle Windows runtime DLLs" step above.
       - name: Check for manually-built Windows binary
         run: |
-          if [ -f artifacts/zolam-windows-amd64.exe ]; then
-            echo "Found artifacts/zolam-windows-amd64.exe — including it in the release."
+          if [ -f artifacts/zolam-windows-amd64.zip ]; then
+            echo "Found artifacts/zolam-windows-amd64.zip — including it in the release."
           else
-            echo "::warning::artifacts/zolam-windows-amd64.exe not found — this release will ship without a Windows binary."
+            echo "::warning::artifacts/zolam-windows-amd64.zip not found — this release will ship without a Windows binary."
           fi
 
       - name: Create GitHub Release
