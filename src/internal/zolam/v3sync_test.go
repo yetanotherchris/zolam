@@ -1,6 +1,8 @@
 package zolam
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -66,7 +68,7 @@ func TestRunV3Sync_ResetWithNoDirsErrors(t *testing.T) {
 	}
 }
 
-func TestRunV3Sync_ResyncWithDirsUpdatesSourceDirs(t *testing.T) {
+func TestRunV3Sync_ResyncWithDirsAddsToSourceDirs(t *testing.T) {
 	root := t.TempDir()
 	other := t.TempDir()
 
@@ -74,12 +76,68 @@ func TestRunV3Sync_ResyncWithDirsUpdatesSourceDirs(t *testing.T) {
 		t.Fatalf("first RunV3Sync() returned error: %v", err)
 	}
 
+	// Naming a second, different directory on a later ingest must add to
+	// the project's source_dirs, not replace them — only --reset drops a
+	// previously-ingested directory. This mirrors the README's own
+	// example of ingesting one directory and then another.
 	_, proj, err := RunV3Sync(V3SyncOptions{Root: root, Dirs: []string{other}}, noopOutput)
 	if err != nil {
 		t.Fatalf("second RunV3Sync() returned error: %v", err)
 	}
-	if len(proj.SourceDirs) != 1 || proj.SourceDirs[0] != other {
-		t.Errorf("SourceDirs = %v, want [%s]", proj.SourceDirs, other)
+	if len(proj.SourceDirs) != 2 || proj.SourceDirs[0] != root || proj.SourceDirs[1] != other {
+		t.Errorf("SourceDirs = %v, want [%s %s]", proj.SourceDirs, root, other)
+	}
+}
+
+func TestRunV3Sync_ResyncWithNewDirDoesNotWipeSidecarsOrChunks(t *testing.T) {
+	prepareCachedEmbeddingAssets(t)
+
+	root := t.TempDir()
+	dir1 := filepath.Join(root, "dir1")
+	dir2 := filepath.Join(root, "dir2")
+	if err := os.MkdirAll(dir1, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(dir2, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir1, "a.txt"), []byte("hello from dir1"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir2, "b.txt"), []byte("hello from dir2"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, _, err := RunV3Sync(V3SyncOptions{Root: root, Dirs: []string{dir1}, Backend: "jsonl"}, noopOutput); err != nil {
+		t.Fatalf("first RunV3Sync() returned error: %v", err)
+	}
+
+	projectDir := domain.LocalProjectDir(root)
+	hashesAfterFirst, err := LoadFileHashes(projectDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := hashesAfterFirst[filepath.Join("dir1", "a.txt")]; !ok {
+		t.Fatalf("expected dir1/a.txt to be hashed after first ingest, got %v", hashesAfterFirst)
+	}
+
+	result, _, err := RunV3Sync(V3SyncOptions{Root: root, Dirs: []string{dir2}}, noopOutput)
+	if err != nil {
+		t.Fatalf("second RunV3Sync() returned error: %v", err)
+	}
+	if result.Removed != 0 {
+		t.Errorf("second RunV3Sync() Removed = %d, want 0 (dir1 should stay tracked)", result.Removed)
+	}
+
+	hashesAfterSecond, err := LoadFileHashes(projectDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := hashesAfterSecond[filepath.Join("dir1", "a.txt")]; !ok {
+		t.Errorf("dir1/a.txt was dropped from file-hashes.json after ingesting dir2: %v", hashesAfterSecond)
+	}
+	if _, ok := hashesAfterSecond[filepath.Join("dir2", "b.txt")]; !ok {
+		t.Errorf("dir2/b.txt missing from file-hashes.json after ingesting dir2: %v", hashesAfterSecond)
 	}
 }
 

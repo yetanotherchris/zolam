@@ -193,7 +193,7 @@ func loadOrCreateProject(projectDir, root string, opts V3SyncOptions) (*domain.P
 	if opts.Backend != "" && opts.Backend != project.Backend {
 		return nil, fmt.Errorf("this project was created with backend %q; use --reset to switch to %q", project.Backend, opts.Backend)
 	}
-	project.SourceDirs = absDirs
+	project.SourceDirs = mergeDirs(project.SourceDirs, absDirs)
 	if len(opts.Extensions) > 0 {
 		project.Extensions = opts.Extensions
 	}
@@ -233,4 +233,25 @@ func absPaths(dirs []string) ([]string, error) {
 		out = append(out, abs)
 	}
 	return out, nil
+}
+
+// mergeDirs unions newDirs into existing, preserving existing's order and
+// appending any newDirs not already present. A named source directory is
+// additive across ingest runs — dropping one (and the files under it) is
+// only supposed to happen via --reset, not by simply omitting it from a
+// later 'zolam ingest <dir>' call.
+func mergeDirs(existing, newDirs []string) []string {
+	seen := make(map[string]bool, len(existing))
+	out := make([]string, len(existing))
+	copy(out, existing)
+	for _, d := range existing {
+		seen[d] = true
+	}
+	for _, d := range newDirs {
+		if !seen[d] {
+			seen[d] = true
+			out = append(out, d)
+		}
+	}
+	return out
 }
