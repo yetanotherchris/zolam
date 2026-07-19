@@ -1,11 +1,11 @@
 {
   "homepage": "https://github.com/yetanotherchris/zolam",
   "description": "Semantic search file ingester for ChromaDB",
-  "version": "5.0.3",
+  "version": "5.0.4",
   "architecture": {
     "64bit": {
-      "url": "https://github.com/yetanotherchris/zolam/releases/download/v5.0.3/zolam-windows-amd64.zip",
-      "hash": "274acfe272080ee6f8266c8ed93a2b8da2e99266d209fb34ff0485c956a50bee",
+      "url": "https://github.com/yetanotherchris/zolam/releases/download/v5.0.4/zolam-windows-amd64.zip",
+      "hash": "426584d84e38aa4ecf92204c1cb35805b6154cb8e88829a173119ce630491711",
       "bin": [
         [
           "zolam.exe",
