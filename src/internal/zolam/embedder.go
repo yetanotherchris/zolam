@@ -101,6 +101,19 @@ func (e *Embedder) embedOne(text string) ([]float32, error) {
 	if n == 0 {
 		return make([]float32, e.dims), nil
 	}
+	// Defensive backstop: the tokenizer is constructed with truncation at
+	// maxSeqLen (see FromBytesWithTruncation above), but that native
+	// truncation has been observed to not take effect on some platforms
+	// (e.g. Windows), letting oversized inputs reach the ONNX graph and
+	// fail with a positional-embedding broadcast error at Run. Re-truncate
+	// here so embedding is correct regardless of the native tokenizer's
+	// behaviour. The last id is kept in place since it's the [SEP]
+	// special token added by Encode's addSpecialTokens=true.
+	if n > maxSeqLen {
+		ids[maxSeqLen-1] = ids[n-1]
+		ids = ids[:maxSeqLen]
+		n = maxSeqLen
+	}
 
 	inputIDs := make([]int64, n)
 	attnMask := make([]int64, n)
