@@ -3,6 +3,7 @@ package zolam
 import (
 	"fmt"
 	"math"
+	"os"
 	"sync"
 
 	"github.com/daulet/tokenizers"
@@ -13,6 +14,12 @@ import (
 
 var ortInitOnce sync.Once
 var ortInitErr error
+
+// maxSeqLen is bge-small-en-v1.5's max_position_embeddings. The ONNX
+// graph's positional-embedding Add node is sized against this, so any
+// input longer than this many tokens fails at Run with a broadcast error
+// rather than a clean truncation.
+const maxSeqLen = 512
 
 // Embedder turns text into normalised embedding vectors using the ONNX
 // export of the project's embedding model (BAAI/bge-small-en-v1.5, CLS
@@ -41,7 +48,11 @@ func NewEmbedder(outputFn func(string)) (*Embedder, error) {
 		return nil, fmt.Errorf("initialising onnxruntime: %w", ortInitErr)
 	}
 
-	tk, err := tokenizers.FromFile(assets.TokenizerPath)
+	tokenizerData, err := os.ReadFile(assets.TokenizerPath)
+	if err != nil {
+		return nil, fmt.Errorf("reading tokenizer: %w", err)
+	}
+	tk, err := tokenizers.FromBytesWithTruncation(tokenizerData, maxSeqLen, tokenizers.TruncationDirectionRight)
 	if err != nil {
 		return nil, fmt.Errorf("loading tokenizer: %w", err)
 	}
