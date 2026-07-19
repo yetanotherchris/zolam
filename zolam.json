@@ -8,7 +8,7 @@
       "hash": "eac99ec1773af361135afd6b2d5e6c77e874b6f0d4bb2faed70146df6ed14985",
       "bin": [
         [
-          "zolam-windows-amd64.exe",
+          "zolam.exe",
           "zolam"
         ]
       ]
