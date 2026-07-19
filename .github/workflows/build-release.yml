@@ -141,7 +141,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $tokVersion = (Select-String -Path src\go.mod -Pattern 'daulet/tokenizers' | Select-Object -First 1).Line.Split()[1]
+          $tokVersion = (Select-String -Path src\go.mod -Pattern 'daulet/tokenizers\s+(\S+)').Matches[0].Groups[1].Value
           .\build-libtokenizers.ps1 -TokenizersVersion $tokVersion -OutputPath src\native\tokenizers\libtokenizers.a
 
       - name: Fetch native tokenizers library
