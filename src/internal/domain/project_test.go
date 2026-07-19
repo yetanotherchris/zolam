@@ -25,7 +25,7 @@ func TestProjectSaveLoadRoundTrip(t *testing.T) {
 		t.Fatalf("Exists() reported true before project.json was created")
 	}
 
-	p := New("duckdb", []string{"/notes"}, []string{".md"})
+	p := New("sqlite", []string{"/notes"}, []string{".md"})
 	if err := Save(projectDir, p); err != nil {
 		t.Fatalf("Save() returned error: %v", err)
 	}
@@ -38,8 +38,8 @@ func TestProjectSaveLoadRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() returned error: %v", err)
 	}
-	if loaded.Backend != "duckdb" || loaded.EmbeddingModel != DefaultEmbeddingModel || loaded.EmbeddingDims != DefaultEmbeddingDims {
-		t.Errorf("Load() = %+v, want backend=duckdb model=%s dims=%d", loaded, DefaultEmbeddingModel, DefaultEmbeddingDims)
+	if loaded.Backend != "sqlite" || loaded.EmbeddingModel != DefaultEmbeddingModel || loaded.EmbeddingDims != DefaultEmbeddingDims {
+		t.Errorf("Load() = %+v, want backend=sqlite model=%s dims=%d", loaded, DefaultEmbeddingModel, DefaultEmbeddingDims)
 	}
 	if len(loaded.SourceDirs) != 1 || loaded.SourceDirs[0] != "/notes" {
 		t.Errorf("SourceDirs = %v, want [/notes]", loaded.SourceDirs)
@@ -47,7 +47,7 @@ func TestProjectSaveLoadRoundTrip(t *testing.T) {
 }
 
 func TestIsValidBackend(t *testing.T) {
-	for _, b := range []string{"duckdb", "jsonl", "chroma"} {
+	for _, b := range []string{"sqlite", "jsonl", "chroma"} {
 		if !IsValidBackend(b) {
 			t.Errorf("IsValidBackend(%q) = false, want true", b)
 		}
@@ -68,7 +68,7 @@ func TestLocalProjectDir(t *testing.T) {
 func TestRemove(t *testing.T) {
 	root := t.TempDir()
 	projectDir := LocalProjectDir(root)
-	if err := Save(projectDir, New("duckdb", nil, nil)); err != nil {
+	if err := Save(projectDir, New("sqlite", nil, nil)); err != nil {
 		t.Fatalf("Save() returned error: %v", err)
 	}
 

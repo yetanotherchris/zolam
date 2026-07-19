@@ -34,7 +34,7 @@ type QueryHit struct {
 	Score *float64
 }
 
-// indexBackend is the storage interface both DuckDBRepo and JsonlRepo
+// indexBackend is the storage interface both SQLiteRepo and JsonlRepo
 // satisfy; RunIngest/RunQuery are written against it so the backend choice
 // is just which Open* constructor gets called.
 type indexBackend interface {
@@ -47,12 +47,12 @@ type indexBackend interface {
 
 func openBackend(projectDir, backendName, model string, dims int) (indexBackend, error) {
 	switch backendName {
-	case "duckdb":
-		return OpenDuckDBRepo(projectDir, model, dims)
+	case "sqlite":
+		return OpenSQLiteRepo(projectDir, model, dims)
 	case "jsonl":
 		return OpenJsonlRepo(projectDir, model, dims)
 	default:
-		return nil, fmt.Errorf("unsupported backend %q (expected duckdb or jsonl)", backendName)
+		return nil, fmt.Errorf("unsupported backend %q (expected sqlite or jsonl)", backendName)
 	}
 }
 

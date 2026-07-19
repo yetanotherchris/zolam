@@ -16,7 +16,7 @@ const (
 	CurrentProjectVersion = 3
 
 	// DefaultBackend is used for new projects when --backend is not given.
-	DefaultBackend = "duckdb"
+	DefaultBackend = "sqlite"
 
 	// DefaultEmbeddingModel and DefaultEmbeddingDims describe the fastembed
 	// model used by the embedded Python script. Changing these requires a
@@ -26,7 +26,7 @@ const (
 )
 
 // ValidBackends lists the backends accepted by --backend.
-var ValidBackends = []string{"duckdb", "jsonl", "chroma"}
+var ValidBackends = []string{"sqlite", "jsonl", "chroma"}
 
 func IsValidBackend(b string) bool {
 	for _, v := range ValidBackends {

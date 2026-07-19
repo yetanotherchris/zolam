@@ -16,7 +16,7 @@ update` instead — it reuses the source directories already recorded in
 removed files reprocessed) comes from the stored file hashes, not from
 which form of the command you use. Ingesting creates a hidden `.zolam/` folder
 (`.zolam/project.json`, `.zolam/index.md`,
-`.zolam/index.duckdb` or `.zolam/index.jsonl`,
+`.zolam/index.db` or `.zolam/index.jsonl`,
 `.zolam/extracted/` for PDF/DOCX sidecars). There is no separate global
 project registry — a directory containing `.zolam/project.json` is an
 indexed project.

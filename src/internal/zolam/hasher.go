@@ -51,7 +51,7 @@ func HashDirectory(dir, root string, extensions []string) (map[string]string, er
 			return err
 		}
 		// Never descend into zolam's own .zolam/ project directory (project.json,
-		// index.duckdb/jsonl, file-hashes.json, index.md, extracted/ sidecars):
+		// index.db/jsonl, file-hashes.json, index.md, extracted/ sidecars):
 		// when no source directory is given, ingest scans the current directory
 		// itself, which is where .zolam/ lives.
 		if info.IsDir() {

@@ -11,13 +11,13 @@ import (
 const lockFileName = "ingest.lock"
 
 // acquireLock takes an exclusive, filesystem-based lock on projectDir for
-// the lifetime of a single ingest/query invocation. DuckDB only allows one
-// process to have index.duckdb open at a time, so without this, running
-// 'zolam ingest' or 'zolam query' against the same project concurrently
-// (e.g. from two terminals) surfaces as a raw, confusing DuckDB IO error
-// rather than an actionable one. Stale locks left behind by a
-// crashed/killed process are detected via PID liveness and reclaimed
-// automatically.
+// the lifetime of a single ingest/query invocation. Both backends
+// (SQLiteRepo, JsonlRepo) are kept to a single open connection/writer by
+// design, so without this, running 'zolam ingest' or 'zolam query' against
+// the same project concurrently (e.g. from two terminals) risks a
+// corrupted or confusingly-locked index instead of a clear error. Stale
+// locks left behind by a crashed/killed process are detected via PID
+// liveness and reclaimed automatically.
 func acquireLock(projectDir string) (release func(), err error) {
 	path := filepath.Join(projectDir, lockFileName)
 

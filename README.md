@@ -1,6 +1,6 @@
 # zolam
 
-Ingest your personal files (PDF, Markdown, Docx, Txt, code) into a local flat-file/DuckDB/ChromaDb index for semantic search in Claude Code / OpenCode. 
+Ingest your personal files (PDF, Markdown, Docx, Txt, code) into a local flat-file/SQLite/ChromaDb index for semantic search in Claude Code / OpenCode. 
 
 Zolam is a single Go binary that walks subdirectories, extracting and chunking text and creating embeddings natively (no separate runtime to install). It hashes files for incremental updates, and generates a human-readable `index.md` summary.  It stores what it needs in `.zolam` directory.
 
@@ -26,7 +26,7 @@ scoop install tesseract-languages    # Windows: language data (eng.traineddata e
 Subdirectories are scanned recursively. Binary formats (PDF, DOCX) get a markdown version under `.zolam/extracted/`.
 
 ```
-# Ingest files into the current directory's project (defaults to the duckdb backend)
+# Ingest files into the current directory's project (defaults to the sqlite backend)
 # A directory is always required, to scope what gets indexed
 cd ~/notes
 zolam ingest . --extensions .md,.pdf
@@ -63,7 +63,7 @@ The first time you run "ingest", zolam creates a `.zolam` subdirectory in your c
 
 ```
   project.json         # metadata for the ingestion
-  index.duckdb         # (or index.jsonl) the vector index
+  index.db             # (or index.jsonl) the vector index
   index.md             # human-readable summary of every indexed file
   extracted/           # markdown sidecars for PDFs/DOCX (grep-able text)
   file-hashes.json     # incremental-update state
@@ -73,7 +73,7 @@ You can change the way the text and embeds are stored with `--backend` on first 
 
 | Backend | When to use |
 |---|---|
-| `duckdb` (default) | General use — SQL-queryable, supports keyword (`ILIKE`) search alongside semantic search. |
+| `sqlite` (default) | General use — SQLite + [sqlite-vec](https://github.com/asg017/sqlite-vec) for vector search, SQL-queryable, supports keyword (`LIKE`) search alongside semantic search. |
 | `jsonl` | You want the index itself to be plain-text: greppable, diffable, easy to inspect or version. |
 | `chroma` (legacy) | You're already using the pre-v3 ChromaDB/Docker/MCP workflow and want to keep doing so. |
 
@@ -85,7 +85,7 @@ You can change the way the text and embeds are stored with `--backend` on first 
 
 Before v3, zolam ran a ChromaDB server in Docker and required registering
 a `chroma-mcp` MCP server with Claude Code/OpenCode. It's deprecated in
-favor of the daemon-free `duckdb`/`jsonl` workflow above — it requires
+favor of the daemon-free `sqlite`/`jsonl` workflow above — it requires
 Docker Desktop, a background container, and an extra MCP registration
 step that the v3 flow doesn't need. `zolam ingest`/`zolam query` no
 longer support this backend at all (`--backend chroma` is rejected);
@@ -109,11 +109,13 @@ docker compose --profile ingest run --rm \
 
 ## Architecture notes
 
-The ingest/query pipeline (extraction, chunking, embedding, and the DuckDB
+The ingest/query pipeline (extraction, chunking, embedding, and the SQLite
 index itself) is pure Go — there's no separate Python or Node runtime to
-install. This needs CGO enabled at build time, since three of the pipeline's
-dependencies wrap native libraries: [`marcboeker/go-duckdb`](https://github.com/marcboeker/go-duckdb)
-(DuckDB), [`gen2brain/go-fitz`](https://github.com/gen2brain/go-fitz) (MuPDF,
+install. This needs CGO enabled at build time, since several of the pipeline's
+dependencies wrap native libraries: [`mattn/go-sqlite3`](https://github.com/mattn/go-sqlite3)
+and [`asg017/sqlite-vec-go-bindings`](https://github.com/asg017/sqlite-vec-go-bindings)
+(SQLite + the sqlite-vec extension, both compiled directly into the binary —
+no separate library to install), [`gen2brain/go-fitz`](https://github.com/gen2brain/go-fitz) (MuPDF,
 for PDF extraction/rendering — statically bundled, no extra install needed),
 and [`otiai10/gosseract`](https://github.com/otiai10/gosseract) (Tesseract,
 for OCR — needs Tesseract installed on the host, same as the "Optional:

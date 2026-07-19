@@ -2,12 +2,12 @@
 
 ## Project Overview
 
-Zolam is a semantic search tool that ingests personal files (markdown, PDF, DOCX, code) into a per-directory DuckDB (or JSONL) index for semantic search via Claude. It's a single Go binary — no Docker, Python, or Node runtime required to ingest or query. (A legacy ChromaDB/Docker/MCP workflow still exists under `zolam chromadb` for pre-v3 data; see README's "Deprecated" section.)
+Zolam is a semantic search tool that ingests personal files (markdown, PDF, DOCX, code) into a per-directory SQLite (or JSONL) index for semantic search via Claude. It's a single Go binary — no Docker, Python, or Node runtime required to ingest or query. (A legacy ChromaDB/Docker/MCP workflow still exists under `zolam chromadb` for pre-v3 data; see README's "Deprecated" section.)
 
 ## Tech Stack
 
 - **Go CLI**: Located in `src/`, built with Cobra. CGO is enabled — several dependencies wrap native libraries (see below).
-- **DuckDB**: `github.com/marcboeker/go-duckdb` — the per-project vector index (`.zolam/index.duckdb`).
+- **SQLite + sqlite-vec**: `github.com/mattn/go-sqlite3` + `github.com/asg017/sqlite-vec-go-bindings/cgo` — the per-project vector index (`.zolam/index.db`). Chunk metadata lives in a plain `chunks` table; embeddings live in a parallel `chunks_vec` sqlite-vec virtual table (vec0), joined by rowid.
 - **PDF extraction/rendering**: `github.com/gen2brain/go-fitz` (MuPDF, statically bundled — no extra install).
 - **OCR**: `github.com/otiai10/gosseract` (Tesseract) — needs Tesseract installed on the host; falls back gracefully (page left blank) if it isn't.
 - **Embeddings**: `github.com/yalue/onnxruntime_go` + `github.com/daulet/tokenizers` (the real HuggingFace tokenizers library, for byte-exact tokenization) run `BAAI/bge-small-en-v1.5` (384 dims). The onnxruntime shared library, tokenizer, and model weights download once into `~/.zolam` on first use.
@@ -23,11 +23,11 @@ Zolam is a semantic search tool that ingests personal files (markdown, PDF, DOCX
 │     extract (go-fitz/go-docx/plain) → OCR         │
 │     fallback if needed → chunk → embed            │
 │  3. Single writer commits chunks+vectors to the   │
-│     project's index (DuckDBRepo or JsonlRepo)     │
+│     project's index (SQLiteRepo or JsonlRepo)     │
 └───────────────────────────────────────────────────┘
 ```
 
-Only one process may ever have a project's `index.duckdb` open at a time (a DuckDB constraint, not a design choice) — `lock.go` enforces this with a project-local lock file so a second concurrent `zolam ingest`/`query` fails with a clear message instead of a raw DuckDB IO error.
+Both backends are kept to a single open connection/writer by design — `lock.go` enforces this with a project-local lock file so a second concurrent `zolam ingest`/`query` against the same project fails with a clear message instead of a corrupted or confusingly-locked index.
 
 Building from source needs a C compiler (CGO) and a one-time fetch of the `daulet/tokenizers` static library — see README's "Building from Source".
 
@@ -50,7 +50,7 @@ src/
 │   ├── domain/                 # Config, project.json types
 │   ├── docker/                 # Docker/compose client (legacy ChromaDB path only)
 │   └── zolam/                  # Ingest/query pipeline: extraction, chunking, embedding,
-│                                # DuckDB/JSONL repos, worker pool, file hashing, lock file
+│                                # SQLite/JSONL repos, worker pool, file hashing, lock file
 ├── native/tokenizers/        # Fetched by tools/fetchnative, gitignored
 ├── tools/fetchnative/        # Fetches the daulet/tokenizers static lib pre-build
 ├── go.mod
