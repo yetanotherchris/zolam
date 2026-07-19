@@ -36,22 +36,25 @@ jobs:
             goos: darwin
             goarch: arm64
             suffix: darwin-arm64
-          # windows-amd64 is deliberately absent from this matrix: the
-          # MSYS2 MinGW toolchain currently can't link this binary —
-          # go-fitz's bundled MuPDF static lib was built against an
-          # older/different compiler (undefined reference to the
-          # Clang-only __intrinsic_setjmpex), and DuckDB's and the
-          # Rust tokenizers lib's Windows static libs pull in further
-          # undefined UCRT/ntdll symbols on top of that. None of these
-          # are fixable from this workflow alone. Until that's sorted
-          # out, the windows-amd64 release binary is built manually
+          # windows-amd64 is marked experimental (continue-on-error
+          # below): go-fitz's bundled MuPDF static lib and DuckDB's
+          # Windows static libs pull in undefined UCRT/ntdll/Clang
+          # (__intrinsic_setjmpex) symbols that this workflow can't
+          # resolve yet, so this leg is expected to fail at the final
+          # link step. It's kept running (rather than removed) so we
+          # can see how far it gets as pieces of the toolchain (like
+          # the libtokenizers.a build below) get fixed. Until it fully
+          # passes, the windows-amd64 release binary is built manually
           # and committed to artifacts/zolam-windows-amd64.exe — the
-          # release job below picks it up from there if present. The
-          # dead-looking `if: runner.os == 'Windows'` steps further
-          # down are kept so CI Windows support can be revived later
-          # without reconstructing them from scratch.
+          # release job picks it up from there if present.
+          - os: windows-latest
+            goos: windows
+            goarch: amd64
+            suffix: windows-amd64
+            experimental: true
 
     runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.experimental == true }}
 
     steps:
       - name: Checkout
@@ -104,10 +107,13 @@ jobs:
           install: >-
             git
             mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-rust
             mingw-w64-x86_64-tesseract-ocr
             mingw-w64-x86_64-leptonica
             mingw-w64-x86_64-pkg-config
+
+      - name: Install Scoop
+        if: runner.os == 'Windows'
+        uses: MinoruSekine/setup-scoop@v5
 
       - name: Determine version
         id: version
@@ -124,23 +130,19 @@ jobs:
       # daulet/tokenizers only publishes prebuilt libtokenizers.a for
       # linux/darwin (see its .github/workflows/release.yml) — there's no
       # windows-amd64 release asset, so fetchnative's download 404s. Build
-      # the static lib ourselves from the same tagged source with the
-      # MSYS2 MinGW toolchain (matching the GNU ABI the Go bindings expect
-      # on windows: `#cgo windows LDFLAGS: -ltokenizers -lm -lstdc++
-      # -lws2_32 -luserenv`) and drop it where fetchnative would have
-      # written it; fetchnative then sees the file and skips its download.
+      # the static lib ourselves via build-libtokenizers.ps1 (repo root),
+      # which installs Rust through Scoop (GNU host target) and a plain
+      # MinGW-w64 GCC through Scoop's "mingw" package — no MSYS2 involved
+      # for this piece, since that's what was actually breaking here
+      # (dlltool.exe not found; MSYS2's PATH wasn't reaching the build
+      # reliably). fetchnative below sees the resulting file and skips its
+      # own download.
       - name: Build libtokenizers.a from source (Windows)
         if: runner.os == 'Windows'
-        shell: msys2 {0}
-        working-directory: src
+        shell: pwsh
         run: |
-          set -e
-          TOK_VERSION=$(awk '/daulet\/tokenizers/ {print $2}' go.mod)
-          echo "Building daulet/tokenizers $TOK_VERSION for windows-amd64"
-          git clone --depth 1 --branch "$TOK_VERSION" https://github.com/daulet/tokenizers.git /tmp/tokenizers-src
-          cargo build --release --manifest-path /tmp/tokenizers-src/Cargo.toml -p tokenizers-ffi
-          mkdir -p native/tokenizers
-          cp /tmp/tokenizers-src/target/release/libtokenizers_ffi.a native/tokenizers/libtokenizers.a
+          $tokVersion = (Select-String -Path src\go.mod -Pattern 'daulet/tokenizers' | Select-Object -First 1).Line.Split()[1]
+          .\build-libtokenizers.ps1 -TokenizersVersion $tokVersion -OutputPath src\native\tokenizers\libtokenizers.a
 
       - name: Fetch native tokenizers library
         working-directory: src
