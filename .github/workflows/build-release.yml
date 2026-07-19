@@ -12,6 +12,14 @@ permissions:
 jobs:
   build:
     strategy:
+      # windows-amd64 is marked experimental (continue-on-error above)
+      # and is expected to fail sometimes — without fail-fast: false,
+      # GitHub Actions cancels the other still-running matrix legs the
+      # moment that job's steps report failure (continue-on-error only
+      # stops it from failing the overall run; it doesn't stop the
+      # fail-fast cancellation of siblings), which took out a healthy
+      # macos-13 leg and skipped the release job in a past run.
+      fail-fast: false
       matrix:
         include:
           # Every leg builds natively on a matching-architecture runner —
