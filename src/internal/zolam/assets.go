@@ -15,9 +15,12 @@ import (
 )
 
 // onnxRuntimeVersion pins the onnxruntime release downloaded on first run.
-// Bump alongside github.com/yalue/onnxruntime_go, whose C API bindings
-// target a specific onnxruntime release.
-const onnxRuntimeVersion = "1.20.1"
+// Must match the ORT_API_VERSION baked into github.com/yalue/onnxruntime_go
+// (see its onnxruntime_c_api.h): onnxruntime's GetApi() rejects requests for
+// an API version higher than the shared library itself implements, so an
+// older runtime than the one the Go bindings target fails to initialise.
+// Bump this alongside the onnxruntime_go dependency in go.mod.
+const onnxRuntimeVersion = "1.26.0"
 
 // EmbeddingAssetsDir returns <data-dir>/models, where the tokenizer and
 // ONNX model weights are cached.
@@ -136,8 +139,15 @@ func onnxRuntimeLibName() string {
 // onnxRuntimeReleaseAsset returns the Microsoft onnxruntime release archive
 // name for the current OS/arch.
 func onnxRuntimeReleaseAsset() (string, error) {
-	arch := runtime.GOARCH
-	switch runtime.GOOS {
+	return onnxRuntimeReleaseAssetFor(runtime.GOOS, runtime.GOARCH)
+}
+
+// onnxRuntimeReleaseAssetFor returns the Microsoft onnxruntime release
+// archive name for the given OS/arch, split out from onnxRuntimeReleaseAsset
+// so the platform mapping can be table-tested independent of the host the
+// tests run on.
+func onnxRuntimeReleaseAssetFor(goos, arch string) (string, error) {
+	switch goos {
 	case "linux":
 		goarch := map[string]string{"amd64": "x64", "arm64": "aarch64"}[arch]
 		if goarch == "" {
@@ -145,11 +155,17 @@ func onnxRuntimeReleaseAsset() (string, error) {
 		}
 		return fmt.Sprintf("onnxruntime-linux-%s-%s.tgz", goarch, onnxRuntimeVersion), nil
 	case "darwin":
-		goarch := map[string]string{"amd64": "x86_64", "arm64": "arm64"}[arch]
-		if goarch == "" {
+		if arch == "amd64" {
+			// Upstream onnxruntime stopped publishing osx-x86_64 (and
+			// osx-universal2) archives after v1.23.0, so Intel Macs can't
+			// get a build new enough to satisfy onnxruntime_go's required
+			// API version. Only Apple Silicon is downloadable from here.
+			return "", fmt.Errorf("onnxruntime %s no longer publishes macOS Intel (x86_64) binaries; Apple Silicon (arm64) is required", onnxRuntimeVersion)
+		}
+		if arch != "arm64" {
 			return "", fmt.Errorf("unsupported darwin arch %s", arch)
 		}
-		return fmt.Sprintf("onnxruntime-osx-%s-%s.tgz", goarch, onnxRuntimeVersion), nil
+		return fmt.Sprintf("onnxruntime-osx-arm64-%s.tgz", onnxRuntimeVersion), nil
 	case "windows":
 		goarch := map[string]string{"amd64": "x64", "arm64": "arm64"}[arch]
 		if goarch == "" {
@@ -157,7 +173,7 @@ func onnxRuntimeReleaseAsset() (string, error) {
 		}
 		return fmt.Sprintf("onnxruntime-win-%s-%s.zip", goarch, onnxRuntimeVersion), nil
 	default:
-		return "", fmt.Errorf("unsupported OS %s", runtime.GOOS)
+		return "", fmt.Errorf("unsupported OS %s", goos)
 	}
 }
 
