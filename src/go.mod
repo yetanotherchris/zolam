@@ -1,6 +1,6 @@
 module github.com/yetanotherchris/zolam
 
-go 1.25.0
+go 1.27.0
 
 require (
 	github.com/asg017/sqlite-vec-go-bindings v0.1.6
@@ -10,8 +10,8 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.48
 	github.com/otiai10/gosseract/v2 v2.4.1
 	github.com/spf13/cobra v1.10.2
-	github.com/yalue/onnxruntime_go v1.31.0
-	golang.org/x/sync v0.20.0
+	github.com/yalue/onnxruntime_go v1.38.0
+	golang.org/x/sync v0.24.0
 )
 
 require (

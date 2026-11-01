@@ -77,7 +77,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          # Read the required version from go.mod (currently 1.25.0)
+          # Read the required version from go.mod (currently 1.27.0)
           # instead of pinning it here, so the two can't drift out of
           # sync — setup-go@v6 sets GOTOOLCHAIN=local when go-version
           # is pinned explicitly, which blocks Go's usual toolchain
